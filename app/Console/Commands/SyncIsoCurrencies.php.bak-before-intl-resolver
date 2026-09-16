@@ -1,0 +1,267 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\IsoCurrency;
+use App\Models\IsoCurrencyEntity;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use SimpleXMLElement;
+use Throwable;
+
+class SyncIsoCurrencies extends Command
+{
+    protected $signature = 'iso:sync
+                            {--file= : Path XML SIX List One, default storage/app/list-one.xml}
+                            {--dry-run : Parse and report without writing to database}';
+
+    protected $description = 'Sync current ISO 4217 currencies and entities from the official SIX List One XML';
+
+    /**
+     * Codes from SIX List One that are not operational currencies
+     * for the MC App currency selector.
+     */
+    private const EXCLUDED_CODES = [
+        'BOV',
+        'CHE',
+        'CHW',
+        'CLF',
+        'COU',
+        'MXV',
+        'USN',
+        'UYI',
+        'UYW',
+
+        'XAD',
+        'XAG',
+        'XAU',
+        'XBA',
+        'XBB',
+        'XBC',
+        'XBD',
+        'XDR',
+        'XPD',
+        'XPT',
+        'XSU',
+        'XTS',
+        'XUA',
+        'XXX',
+    ];
+
+    public function handle(): int
+    {
+        $file = $this->option('file')
+            ?: storage_path('app/list-one.xml');
+
+        if (!is_file($file)) {
+            $this->error("File XML tidak ditemukan:");
+            $this->line($file);
+
+            return self::FAILURE;
+        }
+
+        $this->info('SIX ISO 4217 List One');
+        $this->line('File: ' . $file);
+        $this->newLine();
+
+        try {
+            $xml = simplexml_load_file(
+                $file,
+                SimpleXMLElement::class,
+                LIBXML_NONET | LIBXML_NOBLANKS
+            );
+        } catch (Throwable $e) {
+            $this->error('Gagal membaca XML: ' . $e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if (!$xml instanceof SimpleXMLElement) {
+            $this->error('XML tidak dapat diparse.');
+
+            return self::FAILURE;
+        }
+
+        $publishedDate = (string) ($xml['Pblshd'] ?? '');
+
+        $entries = $xml->CcyTbl->CcyNtry ?? [];
+
+        $currencies = [];
+        $rawEntityCount = 0;
+        $skippedNoCurrency = 0;
+        $skippedExcluded = 0;
+
+        foreach ($entries as $entry) {
+            $countryName = trim((string) ($entry->CtryNm ?? ''));
+            $currencyName = trim((string) ($entry->CcyNm ?? ''));
+            $code = strtoupper(trim((string) ($entry->Ccy ?? '')));
+            $numericCode = trim((string) ($entry->CcyNbr ?? ''));
+            $minorUnitRaw = trim((string) ($entry->CcyMnrUnts ?? ''));
+
+            if ($code === '') {
+                $skippedNoCurrency++;
+                continue;
+            }
+
+            if (in_array($code, self::EXCLUDED_CODES, true)) {
+                $skippedExcluded++;
+                continue;
+            }
+
+            $rawEntityCount++;
+
+            $minorUnit = null;
+
+            if ($minorUnitRaw !== '' && is_numeric($minorUnitRaw)) {
+                $minorUnit = (int) $minorUnitRaw;
+            }
+
+            if (!isset($currencies[$code])) {
+                $currencies[$code] = [
+                    'code' => $code,
+                    'numeric_code' => $numericCode !== ''
+                        ? $numericCode
+                        : null,
+                    'name' => $currencyName !== ''
+                        ? $currencyName
+                        : $code,
+                    'minor_unit' => $minorUnit,
+                    'entities' => [],
+                ];
+            } else {
+                /*
+                 * Currency dapat digunakan oleh banyak entity.
+                 * Jika informasi currency pada entry berikutnya
+                 * lebih lengkap, pertahankan informasi yang ada.
+                 */
+                if (
+                    $currencies[$code]['numeric_code'] === null
+                    && $numericCode !== ''
+                ) {
+                    $currencies[$code]['numeric_code'] = $numericCode;
+                }
+
+                if (
+                    ($currencies[$code]['name'] === $code)
+                    && $currencyName !== ''
+                ) {
+                    $currencies[$code]['name'] = $currencyName;
+                }
+
+                if (
+                    $currencies[$code]['minor_unit'] === null
+                    && $minorUnit !== null
+                ) {
+                    $currencies[$code]['minor_unit'] = $minorUnit;
+                }
+            }
+
+            if ($countryName !== '') {
+                $currencies[$code]['entities'][$countryName] = [
+                    'country_code' => null,
+                    'entity_name' => $countryName,
+                ];
+            }
+        }
+
+        $currencyCount = count($currencies);
+        $entityCount = array_sum(
+            array_map(
+                static fn (array $currency): int => count($currency['entities']),
+                $currencies
+            )
+        );
+
+        $this->table(
+            ['Metric', 'Value'],
+            [
+                ['XML published', $publishedDate ?: '-'],
+                ['XML entries', count($entries)],
+                ['Currency tanpa Ccy', $skippedNoCurrency],
+                ['Excluded special/fund/metal', $skippedExcluded],
+                ['Unique operational currencies', $currencyCount],
+                ['Unique entities', $entityCount],
+            ]
+        );
+
+        $this->newLine();
+
+        if ($currencyCount === 0) {
+            $this->error('Tidak ada currency yang dapat di-import.');
+
+            return self::FAILURE;
+        }
+
+        if ($this->option('dry-run')) {
+            $this->info('DRY RUN: tidak ada perubahan database.');
+
+            return self::SUCCESS;
+        }
+
+        $syncedAt = now();
+
+        DB::transaction(function () use (
+            $currencies,
+            $syncedAt
+        ): void {
+            /*
+             * List One adalah daftar CURRENT.
+             * Currency yang tidak lagi ada di List One
+             * tidak boleh tetap dianggap aktif.
+             */
+            IsoCurrency::query()->update([
+                'is_active' => false,
+            ]);
+
+            foreach ($currencies as $currencyData) {
+                $entityNames = array_keys($currencyData['entities']);
+
+                $currency = IsoCurrency::query()->updateOrCreate(
+                    [
+                        'code' => $currencyData['code'],
+                    ],
+                    [
+                        'numeric_code' => $currencyData['numeric_code'],
+                        'name' => $currencyData['name'],
+                        'minor_unit' => $currencyData['minor_unit'],
+                        'is_active' => true,
+                        'last_synced_at' => $syncedAt,
+                    ]
+                );
+
+                foreach ($currencyData['entities'] as $entityData) {
+                    IsoCurrencyEntity::query()->updateOrCreate(
+                        [
+                            'iso_currency_id' => $currency->id,
+                            'entity_name' => $entityData['entity_name'],
+                        ],
+                        [
+                            'country_code' => $entityData['country_code'],
+                        ]
+                    );
+                }
+
+                /*
+                 * Hapus entity lama yang sudah tidak terdapat
+                 * dalam SIX List One terbaru.
+                 */
+                if ($entityNames === []) {
+                    IsoCurrencyEntity::query()
+                        ->where('iso_currency_id', $currency->id)
+                        ->delete();
+                } else {
+                    IsoCurrencyEntity::query()
+                        ->where('iso_currency_id', $currency->id)
+                        ->whereNotIn('entity_name', $entityNames)
+                        ->delete();
+                }
+            }
+        });
+
+        $this->newLine();
+        $this->info('✓ Sinkronisasi SIX ISO 4217 berhasil.');
+        $this->line('Synced at: ' . $syncedAt->toDateTimeString());
+
+        return self::SUCCESS;
+    }
+}

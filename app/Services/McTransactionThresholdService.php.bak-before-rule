@@ -1,0 +1,402 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Currency;
+use App\Models\McTransaction;
+use App\Models\McTransactionItem;
+use App\Models\RateSnapshot;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+
+class McTransactionThresholdService
+{
+    /**
+     * Limit threshold awal per customer per bulan.
+     * Nanti dapat dipindahkan ke tenant settings / compliance settings.
+     */
+    protected const MONTHLY_LIMIT_USD = '10000.00';
+
+    /**
+     * Currency ID USD pada master Almara.
+     */
+    protected const USD_CURRENCY_ID = 1;
+
+    /**
+     * Hitung dan simpan threshold untuk seluruh item transaksi.
+     */
+    public function calculateTransaction(
+        McTransaction $transaction
+    ): Collection {
+        return DB::transaction(function () use ($transaction) {
+            $transaction->loadMissing([
+                'items',
+            ]);
+
+            foreach ($transaction->items as $item) {
+                $this->calculateItem($transaction, $item);
+            }
+
+            return $transaction->fresh([
+                'items',
+                'customer',
+            ])->items;
+        });
+    }
+
+    /**
+     * Hitung threshold untuk satu item.
+     */
+    public function calculateItem(
+        McTransaction $transaction,
+        McTransactionItem $item
+    ): McTransactionItem {
+        if ((string) $item->transaction_id !== (string) $transaction->id) {
+            throw new RuntimeException(
+                'Item tidak termasuk dalam transaksi yang sedang diproses.'
+            );
+        }
+
+        /*
+         * Threshold hanya berlaku untuk BUY:
+         *
+         * BUY = Almara membeli valuta asing dari customer.
+         *
+         * SELL = Almara menjual valuta asing ke customer,
+         * sehingga tidak menambah pemakaian limit customer.
+         */
+        if ($item->direction !== 'buy') {
+            $item->forceFill([
+                'usd_equivalent_amount' => null,
+                'threshold_rate' => null,
+                'threshold_rate_snapshot_id' => null,
+            ])->save();
+
+            return $item->fresh();
+        }
+
+        if ((float) $item->quantity <= 0) {
+            throw new RuntimeException(
+                'Quantity item tidak valid untuk perhitungan threshold.'
+            );
+        }
+
+        $currency = Currency::query()
+            ->whereKey($item->currency_id)
+            ->first();
+
+        if (!$currency) {
+            throw new RuntimeException(
+                'Currency item tidak ditemukan.'
+            );
+        }
+
+        /*
+         * USD langsung:
+         *
+         * USD 100 = USD equivalent 100.
+         *
+         * Kita tetap menggunakan rate snapshot transaksi
+         * sebagai snapshot threshold untuk audit trail.
+         */
+        if ((int) $currency->id === self::USD_CURRENCY_ID) {
+            $transactionSnapshot = RateSnapshot::query()
+                ->whereKey($item->rate_snapshot_id)
+                ->where('tenant_id', $transaction->tenant_id)
+                ->where('currency_id', self::USD_CURRENCY_ID)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$transactionSnapshot) {
+                throw new RuntimeException(
+                    'Rate snapshot USD untuk threshold tidak ditemukan atau tidak aktif.'
+                );
+            }
+
+            $usdEquivalent = $this->decimal(
+                (float) $item->quantity,
+                2
+            );
+
+            $thresholdRate = '1.00000000';
+
+            $item->forceFill([
+                'usd_equivalent_amount' => $usdEquivalent,
+                'threshold_rate' => $thresholdRate,
+                'threshold_rate_snapshot_id' => $transactionSnapshot->id,
+            ])->save();
+
+            return $item->fresh();
+        }
+
+        /*
+         * Non-USD:
+         *
+         * Kita membutuhkan:
+         *
+         * foreign currency -> IDR
+         * USD -> IDR
+         *
+         * lalu:
+         *
+         * USD equivalent =
+         * foreign amount x foreign IDR rate / USD IDR rate
+         *
+         * Untuk BUY, threshold memakai BUY rate.
+         */
+
+        $foreignSnapshot = $this->findThresholdSnapshot(
+            transaction: $transaction,
+            currencyId: (int) $currency->id,
+            variantId: $item->currency_variant_id,
+            denominationId: $item->currency_denomination_id,
+            direction: 'buy'
+        );
+
+        $usdSnapshot = $this->findThresholdSnapshot(
+            transaction: $transaction,
+            currencyId: self::USD_CURRENCY_ID,
+            variantId: null,
+            denominationId: null,
+            direction: 'buy'
+        );
+
+        $foreignRate = (float) $foreignSnapshot->buy_rate;
+        $usdRate = (float) $usdSnapshot->buy_rate;
+
+        if ($foreignRate <= 0) {
+            throw new RuntimeException(
+                'Threshold rate currency foreign tidak valid.'
+            );
+        }
+
+        if ($usdRate <= 0) {
+            throw new RuntimeException(
+                'Threshold rate USD tidak valid.'
+            );
+        }
+
+        $usdEquivalent = (
+            (float) $item->quantity
+            * $foreignRate
+        ) / $usdRate;
+
+        /*
+         * threshold_rate menyimpan rate foreign currency
+         * terhadap IDR yang digunakan untuk threshold.
+         */
+        $item->forceFill([
+            'usd_equivalent_amount' => $this->decimal(
+                $usdEquivalent,
+                2
+            ),
+            'threshold_rate' => $this->decimal(
+                $foreignRate,
+                8
+            ),
+            'threshold_rate_snapshot_id' => $foreignSnapshot->id,
+        ])->save();
+
+        return $item->fresh();
+    }
+
+    /**
+     * Hitung total pemakaian threshold customer
+     * untuk bulan transaksi.
+     *
+     * Booking tidak dihitung karena booking belum menjadi
+     * transaksi fulfilled.
+     */
+    public function getMonthlyUsage(
+        McTransaction $transaction
+    ): string {
+        if (!$transaction->customer_id) {
+            return '0.00';
+        }
+
+        $start = $transaction->transaction_date
+            ->copy()
+            ->startOfMonth();
+
+        $end = $transaction->transaction_date
+            ->copy()
+            ->endOfMonth();
+
+        $total = McTransactionItem::query()
+            ->whereHas('transaction', function ($query) use ($transaction, $start, $end) {
+                $query
+                    ->where('tenant_id', $transaction->tenant_id)
+                    ->where('customer_id', $transaction->customer_id)
+                    ->whereBetween('transaction_date', [$start, $end])
+                    ->whereIn('status', [
+                        'pending_payment',
+                        'paid',
+                        'completed',
+                    ]);
+            })
+            ->where('direction', 'buy')
+            ->whereNotNull('usd_equivalent_amount')
+            ->sum('usd_equivalent_amount');
+
+        return $this->decimal((float) $total, 2);
+    }
+
+    /**
+     * Hitung penggunaan threshold termasuk transaksi
+     * yang sedang diproses.
+     *
+     * Dipakai sebelum transaksi baru disahkan.
+     */
+    public function getUsageIncludingTransaction(
+        McTransaction $transaction
+    ): string {
+        $existingUsage = (float) $this->getMonthlyUsage($transaction);
+
+        $currentUsage = (float) McTransactionItem::query()
+            ->where('transaction_id', $transaction->id)
+            ->where('direction', 'buy')
+            ->whereNotNull('usd_equivalent_amount')
+            ->sum('usd_equivalent_amount');
+
+        return $this->decimal(
+            $existingUsage + $currentUsage,
+            2
+        );
+    }
+
+    /**
+     * Sisa limit customer setelah transaksi.
+     */
+    public function getRemainingLimit(
+        McTransaction $transaction
+    ): string {
+        $usage = (float) $this->getUsageIncludingTransaction($transaction);
+        $limit = (float) self::MONTHLY_LIMIT_USD;
+
+        return $this->decimal(
+            max(0, $limit - $usage),
+            2
+        );
+    }
+
+    /**
+     * Apakah transaksi melewati limit.
+     */
+    public function exceedsLimit(
+        McTransaction $transaction
+    ): bool {
+        return (float) $this->getUsageIncludingTransaction($transaction)
+            > (float) self::MONTHLY_LIMIT_USD;
+    }
+
+    /**
+     * Ringkasan threshold customer.
+     */
+    public function getSummary(
+        McTransaction $transaction
+    ): array {
+        $usage = $this->getUsageIncludingTransaction($transaction);
+        $limit = self::MONTHLY_LIMIT_USD;
+        $remaining = $this->getRemainingLimit($transaction);
+
+        return [
+            'limit_usd' => $limit,
+            'usage_usd' => $usage,
+            'remaining_usd' => $remaining,
+            'exceeds_limit' => (float) $usage > (float) $limit,
+        ];
+    }
+
+    /**
+     * Cari snapshot threshold.
+     *
+     * Prioritas:
+     * 1. tenant
+     * 2. currency
+     * 3. variant jika tersedia
+     * 4. denomination jika tersedia
+     * 5. aktif
+     *
+     * Snapshot transaksi sendiri tidak selalu bisa dipakai
+     * untuk currency non-USD karena threshold membutuhkan
+     * pasangan rate terhadap IDR.
+     */
+    protected function findThresholdSnapshot(
+        McTransaction $transaction,
+        int $currencyId,
+        ?int $variantId,
+        ?int $denominationId,
+        string $direction
+    ): RateSnapshot {
+        $query = RateSnapshot::query()
+            ->where('tenant_id', $transaction->tenant_id)
+            ->where('currency_id', $currencyId)
+            ->where('is_active', true);
+
+        if ($variantId !== null) {
+            $query->where('currency_variant_id', $variantId);
+        } else {
+            $query->whereNull('currency_variant_id');
+        }
+
+        if ($denominationId !== null) {
+            $query->where('currency_denomination_id', $denominationId);
+        } else {
+            $query->whereNull('currency_denomination_id');
+        }
+
+        $snapshot = $query
+            ->orderByDesc('effective_at')
+            ->orderByDesc('id')
+            ->first();
+
+        /*
+         * Untuk USD standard, RateSnapshot #5 saat ini
+         * memiliki variant STD.
+         *
+         * Jika pencarian variant null gagal, fallback ke
+         * active USD snapshot terbaru tanpa denomination.
+         */
+        if (!$snapshot && $currencyId === self::USD_CURRENCY_ID) {
+            $snapshot = RateSnapshot::query()
+                ->where('tenant_id', $transaction->tenant_id)
+                ->where('currency_id', $currencyId)
+                ->where('is_active', true)
+                ->whereNull('currency_denomination_id')
+                ->orderByDesc('effective_at')
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        if (!$snapshot) {
+            throw new RuntimeException(
+                "Rate threshold {$direction} untuk currency ID {$currencyId} tidak ditemukan."
+            );
+        }
+
+        $rate = $direction === 'buy'
+            ? $snapshot->buy_rate
+            : $snapshot->sell_rate;
+
+        if ($rate === null || (float) $rate <= 0) {
+            throw new RuntimeException(
+                "Rate threshold {$direction} untuk currency ID {$currencyId} tidak valid."
+            );
+        }
+
+        return $snapshot;
+    }
+
+    protected function decimal(
+        float $value,
+        int $precision
+    ): string {
+        return number_format(
+            round($value, $precision),
+            $precision,
+            '.',
+            ''
+        );
+    }
+}

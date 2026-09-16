@@ -1,0 +1,566 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Branch;
+use App\Models\Currency;
+use App\Models\CurrencyDenomination;
+use App\Models\CurrencyVariant;
+use App\Models\Customer;
+use App\Models\McTransaction;
+use App\Models\McTransactionItem;
+use App\Models\RateSnapshot;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use RuntimeException;
+
+class McTransactionService
+{
+    public function __construct(
+        protected McTransactionSequenceService $sequenceService,
+        protected McTransactionSettlementBuilderService $settlementBuilder
+    ) {}
+
+    public function create(array $data): McTransaction
+    {
+        return DB::transaction(function () use ($data) {
+            $tenantId = $this->requiredString(
+                $data,
+                'tenant_id'
+            );
+
+            $branchId = $this->requiredString(
+                $data,
+                'branch_id'
+            );
+
+            $customerId = $this->requiredString(
+                $data,
+                'customer_id'
+            );
+
+            $transactionDate = $data['transaction_date']
+                ?? now()->toDateString();
+
+            $this->validateTransactionDate($transactionDate);
+            $this->validateTenantAndBranch(
+                $tenantId,
+                $branchId
+            );
+            $this->validateCustomer(
+                $customerId,
+                $tenantId,
+                $branchId
+            );
+
+            $items = $data['items'] ?? [];
+
+            if (!is_array($items) || count($items) === 0) {
+                throw new RuntimeException(
+                    'Transaksi harus memiliki minimal satu item.'
+                );
+            }
+
+            /*
+             * Settlement TIDAK lagi diterima dari frontend.
+             *
+             * Settlement akan dibuat otomatis berdasarkan
+             * transaction items melalui
+             * McTransactionSettlementBuilderService.
+             */
+
+            $status = $data['status'] ?? 'pending_payment';
+
+            if (!in_array(
+                $status,
+                [
+                    'draft',
+                    'pending_payment',
+                    'paid',
+                    'completed',
+                    'cancelled',
+                    'rejected',
+                ],
+                true
+            )) {
+                throw new RuntimeException(
+                    'Status transaksi tidak valid.'
+                );
+            }
+
+            /*
+             * Transaction baru tidak boleh langsung dianggap
+             * paid/completed karena payment belum diproses.
+             */
+            if (in_array(
+                $status,
+                ['paid', 'completed'],
+                true
+            )) {
+                throw new RuntimeException(
+                    'Transaksi baru tidak boleh langsung berstatus paid atau completed.'
+                );
+            }
+
+            /*
+             * Settlement status selalu dimulai dari pending.
+             * Nilai dari frontend tidak dipercaya.
+             */
+            $settlementStatus = 'pending';
+
+            /*
+             * Invoice number dibuat hanya setelah seluruh validasi
+             * awal lolos dan masih berada di dalam database transaction.
+             */
+            $transactionNo = $this->sequenceService->next(
+                $tenantId,
+                $branchId,
+                $transactionDate
+            );
+
+            $transactionId = (string) Str::ulid();
+
+            $transaction = McTransaction::query()->create([
+                'id' => $transactionId,
+                'tenant_id' => $tenantId,
+                'branch_id' => $branchId,
+                'transaction_no' => $transactionNo,
+                'transaction_date' => $transactionDate,
+                'customer_id' => $customerId,
+
+                'status' => $status,
+                'settlement_status' => $settlementStatus,
+
+                'fund_source_type' =>
+                    $data['fund_source_type'] ?? null,
+
+                'fund_source_detail' =>
+                    $data['fund_source_detail'] ?? null,
+
+                'transaction_purpose_type' =>
+                    $data['transaction_purpose_type'] ?? null,
+
+                'transaction_purpose_detail' =>
+                    $data['transaction_purpose_detail'] ?? null,
+
+                'pickup_same_as_customer' =>
+                    $data['pickup_same_as_customer'] ?? true,
+
+                'pickup_party_type' =>
+                    $data['pickup_party_type'] ?? null,
+
+                'pickup_party_id' =>
+                    $data['pickup_party_id'] ?? null,
+
+                'pickup_name' =>
+                    $data['pickup_name'] ?? null,
+
+                'pickup_phone' =>
+                    $data['pickup_phone'] ?? null,
+
+                'pickup_identity_type' =>
+                    $data['pickup_identity_type'] ?? null,
+
+                'pickup_identity_number' =>
+                    $data['pickup_identity_number'] ?? null,
+
+                'pickup_relationship' =>
+                    $data['pickup_relationship'] ?? null,
+
+                'pickup_status' =>
+                    $data['pickup_status'] ?? 'not_required',
+
+                'pickup_at' =>
+                    $data['pickup_at'] ?? null,
+
+                'handed_over_by' =>
+                    $data['handed_over_by'] ?? null,
+
+                'send_wa_receipt' =>
+                    $data['send_wa_receipt'] ?? false,
+
+                'wa_template_id' =>
+                    $data['wa_template_id'] ?? null,
+
+                'wa_template_version' =>
+                    $data['wa_template_version'] ?? null,
+
+                'wa_status' =>
+                    $data['wa_status'] ?? 'pending',
+
+                'created_by' =>
+                    $data['created_by'] ?? null,
+
+                'updated_by' =>
+                    $data['updated_by'] ?? null,
+
+                'notes' =>
+                    $data['notes'] ?? null,
+            ]);
+
+            /*
+             * Buat semua transaction items.
+             *
+             * createItem() melakukan validasi:
+             * - currency
+             * - variant/series
+             * - denomination
+             * - rate snapshot
+             * - direction
+             * - rate
+             * - subtotal
+             */
+            foreach ($items as $index => $item) {
+                if (!is_array($item)) {
+                    throw new RuntimeException(
+                        "items.{$index} harus berupa array."
+                    );
+                }
+
+                $this->createItem(
+                    $transaction,
+                    $item,
+                    $index
+                );
+            }
+
+            /*
+             * Setelah seluruh item berhasil dibuat,
+             * settlement dibentuk OTOMATIS dari item.
+             *
+             * Contoh BUY USD 100:
+             *
+             * customer_pays      USD 100
+             * customer_receives  IDR 1.765.000
+             */
+            $this->settlementBuilder->build($transaction);
+
+            /*
+             * Return transaction lengkap dengan item
+             * dan settlement hasil builder.
+             */
+            return $transaction->fresh([
+                'items',
+                'settlements',
+            ]);
+        });
+    }
+
+    protected function createItem(
+        McTransaction $transaction,
+        array $item,
+        int $index
+    ): McTransactionItem {
+        $currencyId = $this->requiredString(
+            $item,
+            'currency_id',
+            "items.{$index}.currency_id"
+        );
+
+        $variantId = $this->requiredString(
+            $item,
+            'currency_variant_id',
+            "items.{$index}.currency_variant_id"
+        );
+
+        $direction = $item['direction'] ?? null;
+
+        if (!in_array(
+            $direction,
+            ['buy', 'sell'],
+            true
+        )) {
+            throw new RuntimeException(
+                "items.{$index}.direction harus buy atau sell."
+            );
+        }
+
+        $quantity = $item['quantity'] ?? null;
+        $rate = $item['rate'] ?? null;
+
+        if (!is_numeric($quantity) || (float) $quantity <= 0) {
+            throw new RuntimeException(
+                "items.{$index}.quantity harus lebih besar dari 0."
+            );
+        }
+
+        if (!is_numeric($rate) || (float) $rate <= 0) {
+            throw new RuntimeException(
+                "items.{$index}.rate harus lebih besar dari 0."
+            );
+        }
+
+        /*
+         * Rate snapshot wajib.
+         * Rate transaksi tidak boleh berdiri sendiri
+         * tanpa snapshot.
+         */
+        $rateSnapshotId = $this->requiredString(
+            $item,
+            'rate_snapshot_id',
+            "items.{$index}.rate_snapshot_id"
+        );
+
+        $snapshot = RateSnapshot::query()
+            ->whereKey($rateSnapshotId)
+            ->where('tenant_id', $transaction->tenant_id)
+            ->first();
+
+        if (!$snapshot) {
+            throw new RuntimeException(
+                "items.{$index}.rate_snapshot_id tidak ditemukan atau bukan milik tenant."
+            );
+        }
+
+        if (!$snapshot->is_active) {
+            throw new RuntimeException(
+                "items.{$index}.rate_snapshot_id tidak aktif."
+            );
+        }
+
+        /*
+         * Currency harus merupakan master yang valid.
+         */
+        $currency = Currency::query()
+            ->whereKey($currencyId)
+            ->first();
+
+        if (!$currency) {
+            throw new RuntimeException(
+                "items.{$index}.currency_id tidak ditemukan."
+            );
+        }
+
+        /*
+         * Variant harus valid dan harus milik currency yang sama.
+         */
+        $variant = CurrencyVariant::query()
+            ->whereKey($variantId)
+            ->where('currency_id', $currency->id)
+            ->first();
+
+        if (!$variant) {
+            throw new RuntimeException(
+                "items.{$index}.currency_variant_id tidak cocok dengan currency."
+            );
+        }
+
+        /*
+         * Snapshot harus menunjuk currency dan variant
+         * yang sama dengan item transaksi.
+         */
+        if (
+            (string) $snapshot->currency_id
+            !== (string) $currency->id
+        ) {
+            throw new RuntimeException(
+                "items.{$index}: currency tidak cocok dengan rate snapshot."
+            );
+        }
+
+        if (
+            (string) $snapshot->currency_variant_id
+            !== (string) $variant->id
+        ) {
+            throw new RuntimeException(
+                "items.{$index}: series/variant tidak cocok dengan rate snapshot."
+            );
+        }
+
+        /*
+         * Denomination bersifat optional.
+         */
+        $denominationId =
+            $item['currency_denomination_id'] ?? null;
+
+        $denomination = null;
+
+        if (
+            $denominationId !== null
+            && trim((string) $denominationId) !== ''
+        ) {
+            $denomination = CurrencyDenomination::query()
+                ->whereKey($denominationId)
+                ->where(
+                    'currency_variant_id',
+                    $variant->id
+                )
+                ->first();
+
+            if (!$denomination) {
+                throw new RuntimeException(
+                    "items.{$index}.currency_denomination_id tidak cocok dengan currency/variant."
+                );
+            }
+
+            /*
+             * Jika snapshot spesifik denomination,
+             * denomination transaksi wajib sama.
+             */
+            if (
+                $snapshot->currency_denomination_id !== null
+                && (string) $snapshot->currency_denomination_id
+                    !== (string) $denomination->id
+            ) {
+                throw new RuntimeException(
+                    "items.{$index}: denomination tidak cocok dengan rate snapshot."
+                );
+            }
+        }
+
+        /*
+         * Tentukan rate resmi berdasarkan arah transaksi.
+         *
+         * buy  = Almara membeli valuta dari customer
+         * sell = Almara menjual valuta ke customer
+         */
+        $expectedRate = $direction === 'buy'
+            ? $snapshot->buy_rate
+            : $snapshot->sell_rate;
+
+        if (
+            $expectedRate === null
+            || !is_numeric($expectedRate)
+        ) {
+            throw new RuntimeException(
+                "items.{$index}: rate pada rate snapshot tidak tersedia."
+            );
+        }
+
+        /*
+         * Frontend tidak boleh mengubah rate snapshot.
+         */
+        if (
+            round((float) $rate, 8)
+            !== round((float) $expectedRate, 8)
+        ) {
+            throw new RuntimeException(
+                "items.{$index}.rate tidak sesuai dengan rate snapshot."
+            );
+        }
+
+        /*
+         * Subtotal dihitung server-side.
+         */
+        $subtotal = round(
+            (float) $quantity
+                * (float) $expectedRate,
+            2
+        );
+
+        return McTransactionItem::query()->create([
+            'id' => (string) Str::ulid(),
+            'transaction_id' => $transaction->id,
+
+            'currency_id' => $currency->id,
+            'currency_variant_id' => $variant->id,
+
+            'currency_denomination_id' =>
+                $denomination?->id,
+
+            'direction' => $direction,
+
+            'quantity' => $quantity,
+
+            /*
+             * Simpan rate dari snapshot,
+             * bukan rate mentah frontend.
+             */
+            'rate' => $expectedRate,
+
+            'rate_snapshot_id' => $snapshot->id,
+
+            'subtotal' => $subtotal,
+
+            'notes' => $item['notes'] ?? null,
+
+            /*
+             * Threshold akan dihitung oleh
+             * service compliance/threshold tersendiri.
+             */
+            'usd_equivalent_amount' => null,
+            'threshold_rate' => null,
+            'threshold_rate_snapshot_id' => null,
+        ]);
+    }
+
+    protected function validateTransactionDate(
+        string $transactionDate
+    ): void {
+        $date = \DateTime::createFromFormat(
+            'Y-m-d',
+            $transactionDate
+        );
+
+        if (
+            !$date
+            || $date->format('Y-m-d') !== $transactionDate
+        ) {
+            throw new RuntimeException(
+                'transaction_date harus menggunakan format YYYY-MM-DD.'
+            );
+        }
+    }
+
+    protected function validateTenantAndBranch(
+        string $tenantId,
+        string $branchId
+    ): void {
+        $branch = Branch::query()
+            ->whereKey($branchId)
+            ->where('tenant_id', $tenantId)
+            ->first();
+
+        if (!$branch) {
+            throw new RuntimeException(
+                'Branch tidak ditemukan atau bukan milik tenant.'
+            );
+        }
+    }
+
+    protected function validateCustomer(
+        string $customerId,
+        string $tenantId,
+        string $branchId
+    ): void {
+        $customer = Customer::query()
+            ->whereKey($customerId)
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->first();
+
+        if (!$customer) {
+            throw new RuntimeException(
+                'Customer tidak ditemukan atau bukan milik tenant/branch.'
+            );
+        }
+
+        if ($customer->status !== 'active') {
+            throw new RuntimeException(
+                'Customer tidak berstatus active.'
+            );
+        }
+    }
+
+    /**
+     * Helper required string.
+     */
+    protected function requiredString(
+        array $data,
+        string $key,
+        ?string $label = null
+    ): string {
+        $value = $data[$key] ?? null;
+
+        if (
+            $value === null
+            || trim((string) $value) === ''
+        ) {
+            throw new RuntimeException(
+                ($label ?? $key) . ' wajib diisi.'
+            );
+        }
+
+        return trim((string) $value);
+    }
+}

@@ -1,0 +1,38 @@
+﻿# Laravel
+/vendor/
+/node_modules/
+
+# Environment
+.env
+.env.backup
+.env.production
+.env.local
+
+# Laravel runtime
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/bootstrap/cache/
+
+# SQLite local database
+/database/database.sqlite
+/database/database.sqlite-journal
+
+# IDE / OS
+/.idea/
+/.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build
+/public/build/
+/public/hot
+
+# Temporary files
+*.log
+*.tmp
+*.temp

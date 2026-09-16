@@ -1,0 +1,2397 @@
+@extends('layouts.app')
+
+@section('title', 'Manajemen Kurs')
+@section('page-title', 'Manajemen Kurs')
+
+@section('content')
+
+@php
+    $formatRate = function ($value) {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        return rtrim(
+            rtrim(number_format((float) $value, 6, ',', '.'), '0'),
+            ','
+        );
+    };
+
+    $rateKey = function ($currencyId, $variantId = null, $denominationId = null) {
+        return implode(':', [
+            $currencyId,
+            $variantId ?? 0,
+            $denominationId ?? 0,
+        ]);
+    };
+@endphp
+
+<div class="rates-page">
+
+    {{-- =========================================================
+       TAB PENGATURAN
+       ========================================================= --}}
+    <div class="rates-tabs">
+
+    <a
+        href="{{ route('settings.company.edit') }}"
+        class="rates-tab"
+    >
+        <span class="rates-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 21h18"/>
+                <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
+                <path d="M9 7h1"/>
+                <path d="M14 7h1"/>
+                <path d="M9 11h1"/>
+                <path d="M14 11h1"/>
+                <path d="M9 15h1"/>
+                <path d="M14 15h1"/>
+            </svg>
+        </span>
+        <span>Profil Perusahaan</span>
+    </a>
+
+    <a
+        href="{{ route('settings.customer-risk.index', ['type' => 'occupation']) }}"
+        class="rates-tab"
+    >
+        <span class="rates-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="7" width="18" height="13" rx="2"/>
+                <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <path d="M3 12h18"/>
+                <path d="M10 12v2h4v-2"/>
+            </svg>
+        </span>
+        <span>Bidang Pekerjaan</span>
+    </a>
+
+    <a
+        href="{{ route('settings.customer-risk.index', ['type' => 'nationality']) }}"
+        class="rates-tab"
+    >
+        <span class="rates-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M3 12h18"/>
+                <path d="M12 3a14 14 0 0 1 0 18"/>
+                <path d="M12 3a14 14 0 0 0 0 18"/>
+            </svg>
+        </span>
+        <span>Warga Negara</span>
+    </a>
+
+    <a
+        href="{{ route('settings.rates.index') }}"
+        class="rates-tab active"
+    >
+        <span class="rates-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7h11l-3-3"/>
+                <path d="M18 7l-3-3"/>
+                <path d="M17 17H6l3 3"/>
+                <path d="M6 17l3 3"/>
+                <path d="M18 7a7 7 0 0 1 0 10"/>
+                <path d="M6 17a7 7 0 0 1 0-10"/>
+            </svg>
+        </span>
+        <span>Manajemen Kurs</span>
+    </a>
+
+</div>
+
+
+    {{-- =========================================================
+       HEADER
+       ========================================================= --}}
+    <div class="rates-header">
+
+        <div>
+            <h1>Manajemen Kurs</h1>
+
+            <p>
+                Kelola kurs acuan, spread, variant, dan pecahan mata uang.
+            </p>
+        </div>
+
+        <div class="rates-header-actions">
+
+            <button
+                type="button"
+                class="rates-button rates-button-secondary"
+                onclick="window.location.reload();"
+            >
+                Refresh
+            </button>
+
+            <button
+                type="button"
+                class="rates-button rates-button-primary"
+                onclick="document.getElementById('rateForm').scrollIntoView({ behavior: 'smooth' });"
+            >
+                Input Kurs
+            </button>
+
+        </div>
+
+    </div>
+
+
+    {{-- =========================================================
+       SOURCE SUMMARY
+       ========================================================= --}}
+    <div class="rates-source-bar">
+
+        <div class="rates-source-item">
+            <span class="rates-source-label">
+                Sumber Operasional
+            </span>
+
+            <strong>
+                SmartDeal
+            </strong>
+        </div>
+
+        <div class="rates-source-divider"></div>
+
+        <div class="rates-source-item">
+            <span class="rates-source-label">
+                Referensi
+            </span>
+
+            <strong>
+                Bank Indonesia
+            </strong>
+        </div>
+
+        <div class="rates-source-divider"></div>
+
+        <div class="rates-source-item">
+            <span class="rates-source-label">
+                Formula
+            </span>
+
+            <strong>
+                Acuan + Spread
+            </strong>
+        </div>
+
+        <div class="rates-source-divider"></div>
+
+        <div class="rates-source-item">
+            <span class="rates-source-label">
+                Level Kurs
+            </span>
+
+            <strong>
+                Per Pecahan
+            </strong>
+        </div>
+
+    </div>
+
+
+    {{-- =========================================================
+       FORM INPUT KURS
+       ========================================================= --}}
+    <form
+        method="POST"
+        action="{{ route('settings.rates.store') }}"
+        class="rates-card"
+        id="rateForm"
+    >
+
+        @csrf
+
+        <input
+            type="hidden"
+            name="_method"
+            id="rateFormMethod"
+            value=""
+        >
+
+        <div class="rates-card-header">
+
+            <div>
+                <h2 id="rateFormTitle">
+                    Input Kurs Baru
+                </h2>
+
+                <p>
+                    Kurs dapat diatur berbeda untuk setiap pecahan.
+                </p>
+            </div>
+
+            <span
+                class="rates-card-status"
+                id="rateFormStatus"
+            >
+                Draft
+            </span>
+
+        </div>
+
+
+        <div class="rates-form">
+
+            {{-- =================================================
+               MATA UANG
+               ================================================= --}}
+            <div class="rates-field">
+
+                <label for="currency_id">
+                    Mata Uang
+                </label>
+
+                <select
+                    id="currency_id"
+                    name="currency_id"
+                    required
+                >
+
+                    <option value="">
+                        Pilih mata uang
+                    </option>
+
+                    @foreach($currencies as $currency)
+
+                        <option
+                            value="{{ $currency->id }}"
+                            data-code="{{ $currency->code }}"
+                        >
+                            {{ $currency->flag }}
+                            {{ $currency->code }}
+                            Tambah Sumber
+            </button>
+
+        </div>
+
+
+        <div
+            class="rates-source-form-wrap"
+            id="sourceFormWrap"
+            style="display:none;"
+        >
+
+            <form
+                method="POST"
+                action="{{ route('settings.rates.sources.store') }}"
+                id="sourceForm"
+            >
+
+                @csrf
+
+                <div class="rates-form rates-source-form">
+
+                    <div class="rates-field">
+                        <label for="source_name">
+                            Nama Sumber
+                        </label>
+
+                        <input
+                            type="text"
+                            id="source_name"
+                            name="name"
+                            maxlength="100"
+                            placeholder="Contoh: SmartDeal"
+                            required
+                        >
+                    </div>
+
+
+                    <div class="rates-field">
+                        <label for="source_code">
+                            Kode
+                        </label>
+
+                        <input
+                            type="text"
+                            id="source_code"
+                            name="code"
+                            maxlength="30"
+                            placeholder="SMARTDEAL"
+                            required
+                        >
+                    </div>
+
+
+                    <div class="rates-field">
+                        <label for="source_type">
+                            Tipe Sumber
+                        </label>
+
+                        <select
+                            id="source_type"
+                            name="type"
+                            required
+                        >
+                            <option value="reference">
+                                Reference
+                            </option>
+
+                            <option value="official">
+                                Official
+                            </option>
+
+                            <option value="market">
+                                Market
+                            </option>
+
+                            <option value="manual">
+                                Manual
+                            </option>
+
+                            <option value="api">
+                                API
+                            </option>
+                        </select>
+                    </div>
+
+
+                    <div class="rates-field rates-field-wide">
+                        <label for="source_url">
+                            URL Sumber
+                        </label>
+
+                        <input
+                            type="url"
+                            id="source_url"
+                            name="url"
+                            maxlength="500"
+                            placeholder="https://www.smartdeal.co.id/rates/dki_banten"
+                        >
+                    </div>
+
+
+                    <div class="rates-field rates-field-wide">
+                        <label for="source_description">
+                            Deskripsi
+                        </label>
+
+                        <input
+                            type="text"
+                            id="source_description"
+                            name="description"
+                            placeholder="Keterangan sumber kurs..."
+                        >
+                    </div>
+
+
+                    <div class="rates-field">
+                        <label for="source_sort_order">
+                            Urutan
+                        </label>
+
+                        <input
+                            type="number"
+                            id="source_sort_order"
+                            name="sort_order"
+                            min="0"
+                            max="9999"
+                            value="0"
+                        >
+                    </div>
+
+
+                    <div class="rates-field">
+
+                        <label>
+                            Status
+                        </label>
+
+                        <label class="rates-checkbox">
+
+                            <input
+                                type="checkbox"
+                                id="source_is_active"
+                                name="is_active"
+                                value="1"
+                                checked
+                            >
+
+                            <span>
+                                Aktif
+                            </span>
+
+                        </label>
+
+                    </div>
+
+                </div>
+
+
+                <div class="rates-form-actions">
+
+                    <button
+                        type="button"
+                        class="rates-button rates-button-secondary"
+                        id="sourceCancelButton"
+                    >
+                        Batal
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="rates-button rates-button-primary"
+                        id="sourceSaveButton"
+                    >
+                        Simpan Sumber
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+
+        <div class="rates-table-wrap">
+
+            <table class="rates-table rates-source-table">
+
+                <thead>
+
+                    <tr>
+                        <th style="width:180px;">
+                            Sumber
+                        </th>
+
+                        <th style="width:120px;">
+                            Kode
+                        </th>
+
+                        <th style="width:100px;">
+                            Tipe
+                        </th>
+
+                        <th>
+                            URL Sumber
+                        </th>
+
+                        <th style="width:90px;">
+                            Status
+                        </th>
+
+                        <th style="width:110px;">
+                            Aksi
+                        </th>
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    @php
+                        $hasRateRows = false;
+                    @endphp
+
+                    @foreach($currencies as $currency)
+
+                        @foreach($currency->variants as $variant)
+
+                            @php
+                                $denominations = $variant->denominations;
+                            @endphp
+
+                            @if($denominations->count() > 0)
+
+                                @foreach($denominations as $denomination)
+
+                                    @php
+                                        $hasRateRows = true;
+
+                                        $key = $rateKey(
+                                            $currency->id,
+                                            $variant->id,
+                                            $denomination->id
+                                        );
+
+                                        $rateCollection = $latestRates->get($key);
+
+                                        $rate = $rateCollection instanceof \Illuminate\Support\Collection
+                                            ? $rateCollection->first()
+                                            : $rateCollection;
+                                    @endphp
+
+                                    <tr>
+
+                                        <td>
+                                            <div class="rates-currency">
+
+                                                <span class="rates-flag">
+                                                    {{ $currency->flag ?: 'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â' }}
+                                                </span>
+
+                                                <div>
+                                                    <strong>
+                                                        {{ $currency->code }}
+                                                    </strong>
+
+                                                    <small>
+                                                        {{ $currency->name }}
+                                                    </small>
+                                                </div>
+
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            <span class="rates-variant-badge">
+                                                {{ $variant->name }}
+                                            </span>
+                                        </td>
+
+                                        <td>
+                                            <span class="rates-denomination-general">
+                                                {{ $denomination->display_label }}
+                                            </span>
+                                        </td>
+
+                                        <td>
+
+                                            @if($rate?->rateSource)
+
+                                                <span class="rates-source-badge">
+                                                    {{ $rate->rateSource->name }}
+                                                </span>
+
+                                            @else
+
+                                                <span class="rates-muted">
+                                                    Belum diatur
+                                                </span>
+
+                                            @endif
+
+                                        </td>
+
+                                        <td class="number">
+                                            {{ $rate ? $formatRate($rate->reference_buy_rate) : '-' }}
+                                        </td>
+
+                                        <td class="number">
+
+                                            @if($rate)
+
+                                                <span class="{{ (float) $rate->buy_spread < 0 ? 'spread-negative' : 'spread-positive' }}">
+                                                    {{ (float) $rate->buy_spread > 0 ? '+' : '' }}
+                                                    {{ $formatRate($rate->buy_spread) }}
+                                                </span>
+
+                                            @else
+
+                                                -
+
+                                            @endif
+
+                                        </td>
+
+                                        <td class="number rate-result">
+                                            {{ $rate ? $formatRate($rate->buy_rate) : '-' }}
+                                        </td>
+
+                                        <td class="number">
+                                            {{ $rate ? $formatRate($rate->reference_sell_rate) : '-' }}
+                                        </td>
+
+                                        <td class="number">
+
+                                            @if($rate)
+
+                                                <span class="{{ (float) $rate->sell_spread < 0 ? 'spread-negative' : 'spread-positive' }}">
+                                                    {{ (float) $rate->sell_spread > 0 ? '+' : '' }}
+                                                    {{ $formatRate($rate->sell_spread) }}
+                                                </span>
+
+                                            @else
+
+                                                -
+
+                                            @endif
+
+                                        </td>
+
+                                        <td class="number rate-result">
+                                            {{ $rate ? $formatRate($rate->sell_rate) : '-' }}
+                                        </td>
+
+                                        <td>
+
+                                            @if($rate)
+
+                                                <span class="rates-date">
+                                                    {{ $rate->effective_at?->format('d/m/Y H:i') }}
+                                                </span>
+
+                                            @else
+
+                                                -
+
+                                            @endif
+
+                                        </td>
+
+                                        <td class="center">
+
+                                            @if($rate)
+
+                                                <span class="rates-status active">
+                                                    <span></span>
+                                                    Aktif
+                                                </span>
+
+                                            @else
+
+                                                <span class="rates-status inactive">
+                                                    <span></span>
+                                                    Belum diatur
+                                                </span>
+
+                                            @endif
+
+                                        </td>
+
+                                        <td class="center">
+
+                                            <button
+                                                type="button"
+                                                class="rates-action-button rate-edit-button"
+                                                title="{{ $rate ? 'Edit kurs' : 'Atur kurs' }}"
+                                                data-rate-id="{{ $rate?->id }}"
+                                                data-currency-id="{{ $currency->id }}"
+                                                data-currency-code="{{ $currency->code }}"
+                                                data-variant-id="{{ $variant->id }}"
+                                                data-denomination-id="{{ $denomination->id }}"
+                                                data-source-id="{{ $rate?->rate_source_id }}"
+                                                data-effective-at="{{ $rate?->effective_at?->format('Y-m-d\TH:i') }}"
+                                                data-reference-buy-rate="{{ $rate?->reference_buy_rate }}"
+                                                data-reference-sell-rate="{{ $rate?->reference_sell_rate }}"
+                                                data-buy-spread="{{ $rate?->buy_spread }}"
+                                                data-sell-spread="{{ $rate?->sell_spread }}"
+                                                data-notes="{{ $rate?->notes ?? '' }}"
+                                            >
+                                                ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½
+                                            </button>
+
+                                        </td>
+
+                                    </tr>
+
+                                @endforeach
+
+                            @else
+
+                                @php
+                                    $hasRateRows = true;
+
+                                    $key = $rateKey(
+                                        $currency->id,
+                                        $variant->id,
+                                        null
+                                    );
+
+                                    $rateCollection = $latestRates->get($key);
+
+                                    $rate = $rateCollection instanceof \Illuminate\Support\Collection
+                                        ? $rateCollection->first()
+                                        : $rateCollection;
+                                @endphp
+
+                                <tr>
+
+                                    <td>
+                                        <div class="rates-currency">
+
+                                            <span class="rates-flag">
+                                                {{ $currency->flag ?: 'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â' }}
+                                            </span>
+
+                                            <div>
+                                                <strong>
+                                                    {{ $currency->code }}
+                                                </strong>
+
+                                                <small>
+                                                    {{ $currency->name }}
+                                                </small>
+                                            </div>
+
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <span class="rates-variant-badge">
+                                            {{ $variant->name }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span class="rates-denomination-general">
+                                            Umum
+                                        </span>
+                                    </td>
+
+                                    <td>
+
+                                        @if($rate?->rateSource)
+
+                                            <span class="rates-source-badge">
+                                                {{ $rate->rateSource->name }}
+                                            </span>
+
+                                        @else
+
+                                            <span class="rates-muted">
+                                                Belum diatur
+                                            </span>
+
+                                        @endif
+
+                                    </td>
+
+                                    <td class="number">
+                                        {{ $rate ? $formatRate($rate->reference_buy_rate) : '-' }}
+                                    </td>
+
+                                    <td class="number">
+
+                                        @if($rate)
+
+                                            <span class="{{ (float) $rate->buy_spread < 0 ? 'spread-negative' : 'spread-positive' }}">
+                                                {{ (float) $rate->buy_spread > 0 ? '+' : '' }}
+                                                {{ $formatRate($rate->buy_spread) }}
+                                            </span>
+
+                                        @else
+
+                                            -
+
+                                        @endif
+
+                                    </td>
+
+                                    <td class="number rate-result">
+                                        {{ $rate ? $formatRate($rate->buy_rate) : '-' }}
+                                    </td>
+
+                                    <td class="number">
+                                        {{ $rate ? $formatRate($rate->reference_sell_rate) : '-' }}
+                                    </td>
+
+                                    <td class="number">
+
+                                        @if($rate)
+
+                                            <span class="{{ (float) $rate->sell_spread < 0 ? 'spread-negative' : 'spread-positive' }}">
+                                                {{ (float) $rate->sell_spread > 0 ? '+' : '' }}
+                                                {{ $formatRate($rate->sell_spread) }}
+                                            </span>
+
+                                        @else
+
+                                            -
+
+                                        @endif
+
+                                    </td>
+
+                                    <td class="number rate-result">
+                                        {{ $rate ? $formatRate($rate->sell_rate) : '-' }}
+                                    </td>
+
+                                    <td>
+
+                                        @if($rate)
+
+                                            <span class="rates-date">
+                                                {{ $rate->effective_at?->format('d/m/Y H:i') }}
+                                            </span>
+
+                                        @else
+
+                                            -
+
+                                        @endif
+
+                                    </td>
+
+                                    <td class="center">
+
+                                        @if($rate)
+
+                                            <span class="rates-status active">
+                                                <span></span>
+                                                Aktif
+                                            </span>
+
+                                        @else
+
+                                            <span class="rates-status inactive">
+                                                <span></span>
+                                                Belum diatur
+                                            </span>
+
+                                        @endif
+
+                                    </td>
+
+                                    <td class="center">
+
+                                        <button
+                                            type="button"
+                                            class="rates-action-button rate-edit-button"
+                                            title="{{ $rate ? 'Edit kurs' : 'Atur kurs' }}"
+                                            data-rate-id="{{ $rate?->id }}"
+                                            data-currency-id="{{ $currency->id }}"
+                                            data-currency-code="{{ $currency->code }}"
+                                            data-variant-id="{{ $variant->id }}"
+                                            data-denomination-id=""
+                                            data-source-id="{{ $rate?->rate_source_id }}"
+                                            data-effective-at="{{ $rate?->effective_at?->format('Y-m-d\TH:i') }}"
+                                            data-reference-buy-rate="{{ $rate?->reference_buy_rate }}"
+                                            data-reference-sell-rate="{{ $rate?->reference_sell_rate }}"
+                                            data-buy-spread="{{ $rate?->buy_spread }}"
+                                            data-sell-spread="{{ $rate?->sell_spread }}"
+                                            data-notes="{{ $rate?->notes ?? '' }}"
+                                        >
+                                            ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½
+                                        </button>
+
+                                    </td>
+
+                                </tr>
+
+                            @endif
+
+                        @endforeach
+
+                    @endforeach
+
+                    @if(!$hasRateRows)
+
+                        <tr>
+                            <td colspan="13" class="rates-empty">
+                                Belum ada mata uang atau variant aktif.
+                            </td>
+                        </tr>
+
+                    @endif
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function () {
+
+    const rateForm =
+        document.getElementById('rateForm');
+
+    const rateFormMethod =
+        document.getElementById('rateFormMethod');
+
+    const rateFormTitle =
+        document.getElementById('rateFormTitle');
+
+    const rateFormStatus =
+        document.getElementById('rateFormStatus');
+
+    const rateSaveButton =
+        document.getElementById('rateSaveButton');
+
+    const rateCancelButton =
+        document.getElementById('rateCancelButton');
+
+
+    const currencyField =
+        document.getElementById('currency_id');
+
+    const variantField =
+        document.getElementById('currency_variant_id');
+
+    const denominationField =
+        document.getElementById('currency_denomination_id');
+
+    const rateSource =
+        document.getElementById('rate_source_id');
+
+    const effectiveAtField =
+        document.getElementById('effective_at');
+
+    const referenceBuyRate =
+        document.getElementById('reference_buy_rate');
+
+    const referenceSellRate =
+        document.getElementById('reference_sell_rate');
+
+    const buySpread =
+        document.getElementById('buy_spread');
+
+    const sellSpread =
+        document.getElementById('sell_spread');
+
+    const buyPreview =
+        document.getElementById('buy_rate_preview');
+
+    const sellPreview =
+        document.getElementById('sell_rate_preview');
+
+    const notesField =
+        document.getElementById('notes');
+
+
+    const rateStoreUrl =
+        @json(route('settings.rates.store'));
+
+
+    const allVariantOptions =
+        Array.from(
+            variantField?.querySelectorAll('option[data-currency-id]') || []
+        );
+
+
+    const allDenominationOptions =
+        Array.from(
+            denominationField?.querySelectorAll('option[data-variant-id]') || []
+        );
+
+
+    function formatRate(value) {
+
+        if (!Number.isFinite(value)) {
+            return '-';
+        }
+
+        return new Intl.NumberFormat('id-ID', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 6
+        }).format(value);
+
+    }
+
+
+    function calculateRates() {
+
+        const referenceBuy =
+            parseFloat(referenceBuyRate?.value);
+
+        const referenceSell =
+            parseFloat(referenceSellRate?.value);
+
+        const buy =
+            parseFloat(buySpread?.value || '0');
+
+        const sell =
+            parseFloat(sellSpread?.value || '0');
+
+
+        if (buyPreview) {
+
+            buyPreview.value =
+                Number.isFinite(referenceBuy)
+                    ? formatRate(referenceBuy + buy)
+                    : '-';
+
+        }
+
+
+        if (sellPreview) {
+
+            sellPreview.value =
+                Number.isFinite(referenceSell)
+                    ? formatRate(referenceSell + sell)
+                    : '-';
+
+        }
+
+    }
+
+
+    [
+        referenceBuyRate,
+        referenceSellRate,
+        buySpread,
+        sellSpread
+    ].forEach(function (element) {
+
+        element?.addEventListener(
+            'input',
+            calculateRates
+        );
+
+    });
+
+
+    function refreshVariants(selectedVariantId = '') {
+    if (!variantField) {
+        return;
+    }
+
+    const currencyId =
+        currencyField?.value || '';
+
+    variantField.value = '';
+
+    allVariantOptions.forEach(function (option) {
+        const match =
+            option.dataset.currencyId === currencyId;
+
+        option.hidden = !match;
+    });
+
+    if (selectedVariantId) {
+        const selected =
+            allVariantOptions.find(function (option) {
+                return (
+                    option.value === String(selectedVariantId)
+                    &&
+                    option.dataset.currencyId === currencyId
+                );
+            });
+
+        if (selected) {
+            variantField.value = selected.value;
+        }
+    }
+
+    refreshDenominations();
+}
+
+function refreshDenominations(selectedDenominationId = '') {
+
+        if (!denominationField) {
+            return;
+        }
+
+
+        const currencyId =
+            currencyField?.value || '';
+
+        const variantId =
+            variantField?.value || '';
+
+
+        denominationField.value = '';
+
+
+        allDenominationOptions.forEach(function (option) {
+
+            const match =
+                option.dataset.currencyId === currencyId
+                &&
+                option.dataset.variantId === variantId;
+
+            option.hidden = !match;
+
+        });
+
+
+        if (selectedDenominationId) {
+
+            const selected =
+                allDenominationOptions.find(function (option) {
+
+                    return (
+                        option.value === String(selectedDenominationId)
+                        &&
+                        option.dataset.currencyId === currencyId
+                        &&
+                        option.dataset.variantId === variantId
+                    );
+
+                });
+
+
+            if (selected) {
+                denominationField.value =
+                    selected.value;
+            }
+
+        }
+
+    }
+
+
+    currencyField?.addEventListener(
+        'change',
+        function () {
+
+            refreshVariants();
+
+        }
+    );
+
+
+    variantField?.addEventListener(
+        'change',
+        function () {
+
+            refreshDenominations();
+
+        }
+    );
+
+
+    function resetRateForm() {
+
+        if (!rateForm) {
+            return;
+        }
+
+
+        rateForm.action =
+            rateStoreUrl;
+
+
+        if (rateFormMethod) {
+            rateFormMethod.value = '';
+        }
+
+
+        if (rateFormTitle) {
+            rateFormTitle.textContent =
+                'Input Kurs Baru';
+        }
+
+
+        if (rateFormStatus) {
+            rateFormStatus.textContent =
+                'Draft';
+        }
+
+
+        if (rateSaveButton) {
+            rateSaveButton.textContent =
+                'Simpan Kurs';
+        }
+
+
+        if (rateCancelButton) {
+            rateCancelButton.style.display =
+                'none';
+        }
+
+
+        if (currencyField) {
+            currencyField.value = '';
+        }
+
+
+        if (variantField) {
+            variantField.value = '';
+
+            allVariantOptions.forEach(function (option) {
+                option.hidden = true;
+            });
+        }
+
+
+        if (denominationField) {
+
+            denominationField.value = '';
+
+            allDenominationOptions.forEach(function (option) {
+                option.hidden = true;
+            });
+
+        }
+
+
+        if (rateSource) {
+            rateSource.value = '';
+        }
+
+
+        if (effectiveAtField) {
+
+            const now =
+                new Date();
+
+            const localDateTime =
+                new Date(
+                    now.getTime()
+                    -
+                    now.getTimezoneOffset() * 60000
+                )
+                .toISOString()
+                .slice(0, 16);
+
+            effectiveAtField.value =
+                localDateTime;
+
+        }
+
+
+        if (referenceBuyRate) {
+            referenceBuyRate.value = '';
+        }
+
+
+        if (referenceSellRate) {
+            referenceSellRate.value = '';
+        }
+
+
+        if (buySpread) {
+            buySpread.value = '0';
+        }
+
+
+        if (sellSpread) {
+            sellSpread.value = '0';
+        }
+
+
+        if (notesField) {
+            notesField.value = '';
+        }
+
+
+        calculateRates();
+
+    }
+
+
+    function openRateEdit(button) {
+
+        if (!rateForm) {
+            return;
+        }
+
+
+        const rateId =
+            button.dataset.rateId;
+
+
+        if (!rateId) {
+
+            resetRateForm();
+
+
+            if (currencyField) {
+
+                currencyField.value =
+                    button.dataset.currencyId || '';
+
+                refreshVariants(
+                    button.dataset.variantId || ''
+                );
+
+                refreshDenominations(
+                    button.dataset.denominationId || ''
+                );
+
+            }
+
+
+            if (rateFormTitle) {
+
+                rateFormTitle.textContent =
+                    'Atur Kurs '
+                    +
+                    (button.dataset.currencyCode || '');
+
+            }
+
+
+            rateFormStatus.textContent =
+                'Draft';
+
+
+            rateForm.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+
+
+            referenceBuyRate?.focus();
+
+            return;
+
+        }
+
+
+        rateForm.action =
+            @json(url('/pengaturan/manajemen-kurs'))
+            +
+            '/'
+            +
+            rateId;
+
+
+        if (rateFormMethod) {
+            rateFormMethod.value = 'PUT';
+        }
+
+
+        if (currencyField) {
+
+            currencyField.value =
+                button.dataset.currencyId || '';
+
+            refreshVariants(
+                button.dataset.variantId || ''
+            );
+
+            refreshDenominations(
+                button.dataset.denominationId || ''
+            );
+
+        }
+
+
+        if (rateSource) {
+
+            rateSource.value =
+                button.dataset.sourceId || '';
+
+        }
+
+
+        if (effectiveAtField) {
+
+            effectiveAtField.value =
+                button.dataset.effectiveAt || '';
+
+        }
+
+
+        if (referenceBuyRate) {
+
+            referenceBuyRate.value =
+                button.dataset.referenceBuyRate || '';
+
+        }
+
+
+        if (referenceSellRate) {
+
+            referenceSellRate.value =
+                button.dataset.referenceSellRate || '';
+
+        }
+
+
+        if (buySpread) {
+
+            buySpread.value =
+                button.dataset.buySpread || '0';
+
+        }
+
+
+        if (sellSpread) {
+
+            sellSpread.value =
+                button.dataset.sellSpread || '0';
+
+        }
+
+
+        if (notesField) {
+
+            notesField.value =
+                button.dataset.notes || '';
+
+        }
+
+
+        if (rateFormTitle) {
+
+            rateFormTitle.textContent =
+                'Edit Kurs '
+                +
+                (button.dataset.currencyCode || '');
+
+        }
+
+
+        if (rateFormStatus) {
+
+            rateFormStatus.textContent =
+                'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Mode Edit';
+
+        }
+
+
+        if (rateSaveButton) {
+
+            rateSaveButton.textContent =
+                'Perbarui Kurs';
+
+        }
+
+
+        if (rateCancelButton) {
+
+            rateCancelButton.style.display =
+                'inline-flex';
+
+        }
+
+
+        calculateRates();
+
+
+        rateForm.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        });
+
+
+        referenceBuyRate?.focus();
+
+    }
+
+
+    document
+        .querySelectorAll('.rate-edit-button')
+        .forEach(function (button) {
+
+            button.addEventListener(
+                'click',
+                function () {
+                    openRateEdit(button);
+                }
+            );
+
+        });
+
+
+    rateCancelButton?.addEventListener(
+        'click',
+        function () {
+
+            resetRateForm();
+
+            rateForm?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+
+        }
+    );
+
+
+    /* =========================================================
+       MASTER SOURCE
+       ========================================================= */
+
+    const sourceAddButton =
+        document.getElementById('sourceAddButton');
+
+    const sourceCancelButton =
+        document.getElementById('sourceCancelButton');
+
+    const sourceFormWrap =
+        document.getElementById('sourceFormWrap');
+
+    const sourceForm =
+        document.getElementById('sourceForm');
+
+    const sourceSubmitButton =
+        sourceForm?.querySelector(
+            'button[type="submit"]'
+        );
+
+
+    const sourceName =
+        document.getElementById('source_name');
+
+    const sourceCode =
+        document.getElementById('source_code');
+
+    const sourceType =
+        document.getElementById('source_type');
+
+    const sourceUrl =
+        document.getElementById('source_url');
+
+    const sourceDescription =
+        document.getElementById('source_description');
+
+    const sourceSortOrder =
+        document.getElementById('source_sort_order');
+
+    const sourceIsActive =
+        document.getElementById('source_is_active');
+
+
+    function resetSourceForm() {
+
+        if (!sourceForm) {
+            return;
+        }
+
+
+        sourceForm.action =
+            @json(route('settings.rates.sources.store'));
+
+
+        sourceForm
+            .querySelectorAll(
+                'input[name="_method"]'
+            )
+            .forEach(function (element) {
+                element.remove();
+            });
+
+
+        sourceName.value = '';
+        sourceCode.value = '';
+        sourceType.value = 'reference';
+        sourceUrl.value = '';
+        sourceDescription.value = '';
+        sourceSortOrder.value = '0';
+        sourceIsActive.checked = true;
+
+
+        if (sourceSubmitButton) {
+            sourceSubmitButton.textContent =
+                'Simpan Sumber';
+        }
+
+    }
+
+
+    function openSourceForm() {
+
+        if (!sourceFormWrap) {
+            return;
+        }
+
+
+        sourceFormWrap.style.display =
+            'block';
+
+
+        sourceName?.focus();
+
+
+        sourceFormWrap.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest'
+        });
+
+    }
+
+
+    sourceAddButton?.addEventListener(
+        'click',
+        function () {
+
+            resetSourceForm();
+            openSourceForm();
+
+        }
+    );
+
+
+    sourceCancelButton?.addEventListener(
+        'click',
+        function () {
+
+            resetSourceForm();
+
+            sourceFormWrap.style.display =
+                'none';
+
+        }
+    );
+
+
+    document
+        .querySelectorAll('.source-edit-button')
+        .forEach(function (button) {
+
+            button.addEventListener(
+                'click',
+                function () {
+
+                    const id =
+                        button.dataset.id;
+
+
+                    sourceForm
+                        .querySelectorAll(
+                            'input[name="_method"]'
+                        )
+                        .forEach(function (element) {
+                            element.remove();
+                        });
+
+
+                    const methodInput =
+                        document.createElement('input');
+
+                    methodInput.type =
+                        'hidden';
+
+                    methodInput.name =
+                        '_method';
+
+                    methodInput.value =
+                        'PUT';
+
+                    sourceForm.appendChild(
+                        methodInput
+                    );
+
+
+                    sourceForm.action =
+                        @json(url('/pengaturan/manajemen-kurs/sumber'))
+                        +
+                        '/'
+                        +
+                        id;
+
+
+                    sourceName.value =
+                        button.dataset.name || '';
+
+                    sourceCode.value =
+                        button.dataset.code || '';
+
+                    sourceType.value =
+                        button.dataset.type || 'reference';
+
+                    sourceUrl.value =
+                        button.dataset.url || '';
+
+                    sourceDescription.value =
+                        button.dataset.description || '';
+
+                    sourceSortOrder.value =
+                        button.dataset.sortOrder || '0';
+
+                    sourceIsActive.checked =
+                        button.dataset.active === '1';
+
+
+                    if (sourceSubmitButton) {
+
+                        sourceSubmitButton.textContent =
+                            'Simpan Perubahan';
+
+                    }
+
+
+                    openSourceForm();
+
+                }
+            );
+
+        });
+
+
+    calculateRates();
+
+
+    /*
+     * Inisialisasi:
+     * sembunyikan semua variant/denomination terlebih dahulu.
+     */
+    allVariantOptions.forEach(function (option) {
+        option.hidden = true;
+    });
+
+
+    allDenominationOptions.forEach(function (option) {
+        option.hidden = true;
+    });
+
+});
+
+</script>
+
+
+<style>
+
+.rates-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0 0 20px;
+    font-size: 12px;
+}
+
+
+/* =========================================================
+   TABS
+   ========================================================= */
+
+.rates-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--ui-border);
+    overflow-x: auto;
+}
+
+.rates-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 15px;
+    color: var(--ui-text-secondary);
+    background: #f7faf8;
+    border: 1px solid transparent;
+    border-bottom: none;
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.rates-tab:hover {
+    color: var(--ui-primary);
+    background: #eef6f1;
+}
+
+.rates-tab.active {
+    color: var(--ui-primary-dark);
+    background: #ffffff;
+    border-color: var(--ui-border);
+}
+
+.rates-tab.active::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    height: 2px;
+    background: var(--ui-gold);
+}
+
+.rates-tab-icon {
+    font-size: 13px;
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.rates-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.rates-header h1 {
+    margin: 0;
+    color: var(--ui-text);
+    font-size: 16px;
+    font-weight: 900;
+}
+
+.rates-header p {
+    margin: 3px 0 0;
+    color: var(--ui-text-muted);
+    font-size: 10px;
+}
+
+.rates-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
+
+.rates-button {
+    height: 32px;
+    padding: 0 11px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+    border: 1px solid var(--ui-border);
+}
+
+.rates-button-primary {
+    color: #ffffff;
+    background: var(--ui-primary);
+    border-color: var(--ui-primary);
+}
+
+.rates-button-secondary {
+    color: var(--ui-text-secondary);
+    background: #ffffff;
+}
+
+
+/* =========================================================
+   SOURCE BAR
+   ========================================================= */
+
+.rates-source-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+    padding: 8px 11px;
+    background: #fafcfb;
+    border: 1px solid var(--ui-border);
+    border-radius: 5px;
+}
+
+.rates-source-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.rates-source-label {
+    color: var(--ui-text-muted);
+    font-size: 9px;
+}
+
+.rates-source-item strong {
+    color: var(--ui-text);
+    font-size: 10px;
+}
+
+.rates-source-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--ui-border);
+}
+
+
+/* =========================================================
+   CARD
+   ========================================================= */
+
+.rates-card {
+    margin-bottom: 10px;
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid var(--ui-border);
+    border-radius: 5px;
+}
+
+.rates-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #fafcfb;
+    border-bottom: 1px solid var(--ui-border-light);
+}
+
+.rates-card-header h2 {
+    margin: 0;
+    color: var(--ui-text);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.rates-card-header p {
+    margin: 2px 0 0;
+    color: var(--ui-text-muted);
+    font-size: 9px;
+}
+
+.rates-card-status {
+    color: var(--ui-text-muted);
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.rates-table-info {
+    color: var(--ui-text-muted);
+    font-size: 9px;
+    font-weight: 800;
+}
+
+
+/* =========================================================
+   FORM
+   ========================================================= */
+
+.rates-form {
+    display: grid;
+    grid-template-columns:
+        minmax(170px, 1fr)
+        minmax(170px, 1fr)
+        minmax(170px, 1fr)
+        minmax(170px, 1fr);
+    gap: 10px 12px;
+    padding: 11px 12px;
+}
+
+.rates-field {
+    min-width: 0;
+}
+
+.rates-field-wide {
+    grid-column: 1 / -1;
+}
+
+.rates-field label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--ui-text-secondary);
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.rates-field input,
+.rates-field select {
+    width: 100%;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 9px;
+    color: var(--ui-text);
+    background: #ffffff;
+    border: 1px solid var(--ui-border-dark);
+    border-radius: 4px;
+    outline: none;
+    font: inherit;
+    font-size: 11px;
+}
+
+.rates-field input:focus,
+.rates-field select:focus {
+    border-color: var(--ui-border-focus);
+    box-shadow: 0 0 0 2px rgba(50, 148, 107, .08);
+}
+
+.rates-field-help {
+    display: block;
+    margin-top: 4px;
+    color: var(--ui-text-muted);
+    font-size: 8px;
+}
+
+.rates-calculated {
+    font-weight: 900 !important;
+    background: #f7faf8 !important;
+}
+
+.rates-calculated-buy {
+    color: var(--ui-primary-dark) !important;
+}
+
+.rates-calculated-sell {
+    color: var(--ui-gold-dark) !important;
+}
+
+.rates-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--ui-border-light);
+    background: #fafcfb;
+}
+
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+.rates-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.rates-table {
+    width: 100%;
+    min-width: 1500px;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.rates-table th,
+.rates-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--ui-table-border);
+    vertical-align: middle;
+}
+
+.rates-table th {
+    color: var(--ui-text-secondary);
+    background: var(--ui-table-header-bg);
+    font-size: 9px;
+    font-weight: 900;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.rates-table td {
+    color: var(--ui-text-secondary);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.rates-table tbody tr:hover {
+    background: var(--ui-table-row-hover);
+}
+
+.rates-table .number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.rates-table .center {
+    text-align: center;
+}
+
+.col-currency {
+    width: 150px;
+}
+
+.col-variant {
+    width: 105px;
+}
+
+.col-denom {
+    width: 90px;
+}
+
+.col-source {
+    width: 105px;
+}
+
+.col-number {
+    width: 105px;
+}
+
+.col-date {
+    width: 120px;
+}
+
+.col-status {
+    width: 100px;
+}
+
+.col-action {
+    width: 55px;
+}
+
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
+
+.rates-currency {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rates-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 27px;
+    height: 21px;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.rates-currency strong {
+    display: block;
+    color: var(--ui-text);
+    font-size: 10px;
+    font-weight: 900;
+}
+
+.rates-currency small {
+    display: block;
+    margin-top: 2px;
+    color: var(--ui-text-muted);
+    font-size: 9px;
+}
+
+
+/* =========================================================
+   VARIANT / DENOMINATION
+   ========================================================= */
+
+.rates-variant-badge,
+.rates-denomination-badge,
+.rates-denomination-general {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 48px;
+    padding: 4px 7px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 900;
+}
+
+.rates-variant-badge {
+    color: var(--ui-primary);
+    background: var(--ui-primary-light);
+    border: 1px solid #cfe4d9;
+}
+
+.rates-denomination-badge {
+    color: var(--ui-gold-dark);
+    background: var(--ui-gold-light);
+    border: 1px solid #ead8a7;
+    font-variant-numeric: tabular-nums;
+}
+
+.rates-denomination-general {
+    color: var(--ui-text-muted);
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+}
+
+
+/* =========================================================
+   SOURCE
+   ========================================================= */
+
+.rates-source-badge {
+    display: inline-flex;
+    padding: 3px 6px;
+    color: var(--ui-primary);
+    background: var(--ui-primary-light);
+    border: 1px solid #cfe4d9;
+    border-radius: 4px;
+    font-size: 8px;
+    font-weight: 900;
+}
+
+.rates-muted {
+    color: var(--ui-text-muted);
+    font-size: 9px;
+}
+
+
+/* =========================================================
+   SPREAD / RATE
+   ========================================================= */
+
+.spread-negative {
+    color: #a23830;
+    font-weight: 900;
+}
+
+.spread-positive {
+    color: var(--ui-primary);
+    font-weight: 900;
+}
+
+.rate-result {
+    color: var(--ui-text);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.rates-date {
+    color: var(--ui-text-secondary);
+    font-size: 9px;
+}
+
+
+/* =========================================================
+   STATUS
+   ========================================================= */
+
+.rates-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 82px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 8px;
+    font-weight: 900;
+}
+
+.rates-status > span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+
+.rates-status.active {
+    color: var(--ui-primary);
+    background: var(--ui-primary-light);
+    border: 1px solid #cfe4d9;
+}
+
+.rates-status.active > span {
+    background: var(--ui-success);
+}
+
+.rates-status.inactive {
+    color: var(--ui-text-muted);
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+}
+
+.rates-status.inactive > span {
+    background: #9ca3af;
+}
+
+
+/* =========================================================
+   ACTION
+   ========================================================= */
+
+.rates-action-button {
+    width: 27px;
+    height: 27px;
+    padding: 0;
+    color: var(--ui-primary);
+    background: #ffffff;
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.rates-action-button:hover {
+    background: var(--ui-primary-light);
+    border-color: var(--ui-primary);
+}
+
+
+/* =========================================================
+   EMPTY
+   ========================================================= */
+
+.rates-empty {
+    padding: 25px !important;
+    color: var(--ui-text-muted) !important;
+    text-align: center;
+}
+
+
+/* =========================================================
+   MASTER SOURCE
+   ========================================================= */
+
+.rates-source-form-wrap {
+    background: #fbfdfc;
+    border-bottom: 1px solid var(--ui-border-light);
+}
+
+.rates-source-form {
+    padding-bottom: 9px;
+}
+
+.rates-checkbox {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    margin: 0 !important;
+    color: var(--ui-text-secondary);
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    cursor: pointer;
+}
+
+.rates-checkbox input {
+    width: 14px !important;
+    height: 14px !important;
+    margin: 0;
+}
+
+.rates-source-url {
+    color: var(--ui-primary);
+    font-size: 9px;
+    text-decoration: none;
+}
+
+.rates-source-url:hover {
+    text-decoration: underline;
+}
+
+.rates-source-description {
+    display: block;
+    margin-top: 3px;
+    color: var(--ui-text-muted);
+    font-size: 8px;
+    white-space: normal;
+}
+
+.rates-source-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.rates-inline-form {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+.rates-source-table {
+    min-width: 760px;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1200px) {
+
+    .rates-form {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+
+}
+
+@media (max-width: 900px) {
+
+    .rates-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .rates-form {
+        grid-template-columns: 1fr;
+    }
+
+    .rates-source-bar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .rates-source-divider {
+        display: none;
+    }
+
+}
+
+</style>
+
+@endsection
+
+

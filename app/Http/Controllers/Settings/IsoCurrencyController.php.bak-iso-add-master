@@ -1,0 +1,91 @@
+<?php
+
+namespace App\Http\Controllers\Settings;
+
+use App\Http\Controllers\Controller;
+use App\Models\Currency;
+use App\Models\IsoCurrency;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class IsoCurrencyController extends Controller
+{
+    /**
+     * Data currency ISO 4217 untuk selector.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->input('search', ''));
+
+        $currencies = IsoCurrency::query()
+            ->active()
+            ->search($search)
+            ->with([
+    		'masterCurrency:id,code,name,flag,is_active',
+    		'entities' => function ($query) {
+                    $query
+                        ->orderBy('entity_name')
+                        ->select([
+                            'id',
+                            'iso_currency_id',
+                            'country_code',
+                            'entity_name',
+                        ]);
+                },
+            ])
+            ->orderBy('code')
+            ->get([
+                'id',
+                'code',
+                'numeric_code',
+                'name',
+                'minor_unit',
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $currencies,
+        ]);
+    }
+
+    /**
+     * Detail satu currency ISO 4217.
+     */
+    public function show(IsoCurrency $isoCurrency): JsonResponse
+    {
+        if (!$isoCurrency->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Currency ISO tidak aktif.',
+            ], 404);
+        }
+
+        $isoCurrency->load([
+            'entities' => function ($query) {
+                $query->orderBy('entity_name');
+            },
+        ]);
+
+        $masterCurrency = Currency::query()
+            ->where('code', $isoCurrency->code)
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $isoCurrency->id,
+                'code' => $isoCurrency->code,
+                'numeric_code' => $isoCurrency->numeric_code,
+                'name' => $isoCurrency->name,
+                'minor_unit' => $isoCurrency->minor_unit,
+                'entities' => $isoCurrency->entities,
+                'master_currency' => $masterCurrency ? [
+                    'id' => $masterCurrency->id,
+                    'code' => $masterCurrency->code,
+                    'name' => $masterCurrency->name,
+                    'is_active' => $masterCurrency->is_active,
+                ] : null,
+            ],
+        ]);
+    }
+}
