@@ -1,9 +1,10 @@
-﻿<?php
+<?php
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankMutationController;
 use App\Http\Controllers\CashClosingController;
+use App\Http\Controllers\GantunganController;
 use App\Http\Controllers\CurrencyDenominationController;
 use App\Http\Controllers\CurrencyVariantController;
 use App\Http\Controllers\CustomerController;
@@ -21,10 +22,7 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
 Route::middleware(['auth','tenant.context','branch.context'])->group(function () {
-    Route::get('/', fn () => view('dashboard'))
-        ->middleware('permission:dashboard.view')
-        ->name('dashboard');
-
+    Route::get('/', fn () => view('dashboard'))->middleware('permission:dashboard.view')->name('dashboard');
     Route::get('/teller', [TellerController::class, 'index'])->name('teller.index');
 
     /* Closing Operasional */
@@ -32,6 +30,13 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/closing/create', [CashClosingController::class, 'create'])->name('closing.create');
     Route::post('/closing', [CashClosingController::class, 'store'])->name('closing.store');
     Route::get('/closing/{closing}', [CashClosingController::class, 'show'])->name('closing.show');
+
+    /* Gantungan */
+    Route::get('/gantungan', [GantunganController::class, 'index'])->name('gantungan.index');
+    Route::get('/gantungan/create', [GantunganController::class, 'create'])->name('gantungan.create');
+    Route::post('/gantungan', [GantunganController::class, 'store'])->name('gantungan.store');
+    Route::get('/gantungan/{gantungan}', [GantunganController::class, 'show'])->name('gantungan.show');
+    Route::post('/gantungan/{gantungan}/settle', [GantunganController::class, 'settle'])->name('gantungan.settle');
 
     /* Customer Master */
     Route::get('/customers', [CustomerController::class, 'index'])->middleware('permission:customer.view')->name('customers.index');
@@ -48,34 +53,24 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     /* Pengaturan Tenant */
     Route::get('/pengaturan/perusahaan', [TenantSettingController::class, 'edit'])->middleware('permission:settings.manage')->name('settings.company.edit');
     Route::put('/pengaturan/perusahaan', [TenantSettingController::class, 'update'])->middleware('permission:settings.manage')->name('settings.company.update');
-
-    /* Master Customer - Risk Reference */
     Route::get('/pengaturan/master-customer', [CustomerRiskMasterController::class, 'index'])->middleware('permission:settings.manage')->name('settings.customer-risk.index');
     Route::post('/pengaturan/master-customer', [CustomerRiskMasterController::class, 'store'])->middleware('permission:settings.manage')->name('settings.customer-risk.store');
     Route::put('/pengaturan/master-customer/{customerRiskMaster}', [CustomerRiskMasterController::class, 'update'])->middleware('permission:settings.manage')->name('settings.customer-risk.update');
     Route::delete('/pengaturan/master-customer/{customerRiskMaster}', [CustomerRiskMasterController::class, 'destroy'])->middleware('permission:settings.manage')->name('settings.customer-risk.destroy');
-
-    /* Master Currency Variant / Series */
     Route::get('/pengaturan/master-currency-variant', [CurrencyVariantController::class, 'index'])->middleware('permission:settings.manage')->name('settings.currency-variants.index');
     Route::post('/pengaturan/master-currency-variant', [CurrencyVariantController::class, 'store'])->middleware('permission:settings.manage')->name('settings.currency-variants.store');
     Route::put('/pengaturan/master-currency-variant/{currencyVariant}', [CurrencyVariantController::class, 'update'])->middleware('permission:settings.manage')->name('settings.currency-variants.update');
     Route::patch('/pengaturan/master-currency-variant/{currencyVariant}/toggle', [CurrencyVariantController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.currency-variants.toggle');
     Route::patch('/pengaturan/master-currency-variant/{currencyVariant}/set-default', [CurrencyVariantController::class, 'setDefault'])->middleware('permission:settings.manage')->name('settings.currency-variants.set-default');
-
-    /* Manajemen Kurs */
     Route::get('/pengaturan/manajemen-kurs', [RateController::class, 'index'])->middleware('permission:settings.manage')->name('settings.rates.index');
     Route::post('/pengaturan/manajemen-kurs', [RateController::class, 'store'])->middleware('permission:settings.manage')->name('settings.rates.store');
     Route::put('/pengaturan/manajemen-kurs/{rateSnapshot}', [RateController::class, 'update'])->middleware('permission:settings.manage')->name('settings.rates.update');
     Route::post('/pengaturan/manajemen-kurs/sumber', [RateController::class, 'storeSource'])->middleware('permission:settings.manage')->name('settings.rates.sources.store');
     Route::put('/pengaturan/manajemen-kurs/sumber/{rateSource}', [RateController::class, 'updateSource'])->middleware('permission:settings.manage')->name('settings.rates.sources.update');
     Route::patch('/pengaturan/manajemen-kurs/sumber/{rateSource}/toggle', [RateController::class, 'toggleSource'])->middleware('permission:settings.manage')->name('settings.rates.sources.toggle');
-
-    /* ISO 4217 Currency Selector */
     Route::get('/pengaturan/manajemen-kurs/iso-currencies', [IsoCurrencyController::class, 'index'])->middleware('permission:settings.manage')->name('settings.iso-currencies.index');
     Route::get('/pengaturan/manajemen-kurs/iso-currencies/{isoCurrency}', [IsoCurrencyController::class, 'show'])->middleware('permission:settings.manage')->name('settings.iso-currencies.show');
     Route::post('/pengaturan/manajemen-kurs/iso-currencies/{isoCurrency}/add-to-master', [IsoCurrencyController::class, 'addToMaster'])->middleware('permission:settings.manage')->name('settings.iso-currencies.add-to-master');
-
-    /* Bank Accounts */
     Route::get('/pengaturan/bank-accounts', [BankAccountController::class, 'index'])->middleware('permission:settings.manage')->name('settings.bank-accounts.index');
     Route::get('/pengaturan/bank-accounts/create', [BankAccountController::class, 'create'])->middleware('permission:settings.manage')->name('settings.bank-accounts.create');
     Route::post('/pengaturan/bank-accounts', [BankAccountController::class, 'store'])->middleware('permission:settings.manage')->name('settings.bank-accounts.store');
@@ -91,20 +86,14 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}', [BankMutationController::class, 'show'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.show');
     Route::patch('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}/reconcile', [BankMutationController::class, 'reconcile'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.reconcile');
     Route::patch('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}/ignore', [BankMutationController::class, 'ignore'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.ignore');
-
-    /* Master Denomination */
     Route::get('/pengaturan/master-denomination', [CurrencyDenominationController::class, 'index'])->middleware('permission:settings.manage')->name('settings.denominations.index');
     Route::post('/pengaturan/master-denomination', [CurrencyDenominationController::class, 'store'])->middleware('permission:settings.manage')->name('settings.denominations.store');
     Route::put('/pengaturan/master-denomination/{currencyDenomination}', [CurrencyDenominationController::class, 'update'])->middleware('permission:settings.manage')->name('settings.denominations.update');
     Route::patch('/pengaturan/master-denomination/{currencyDenomination}/toggle', [CurrencyDenominationController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.denominations.toggle');
-
-    /* Compliance - Transaction Threshold */
     Route::get('/pengaturan/compliance-threshold', [ComplianceThresholdRuleController::class, 'index'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.index');
     Route::post('/pengaturan/compliance-threshold', [ComplianceThresholdRuleController::class, 'store'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.store');
     Route::put('/pengaturan/compliance-threshold/{complianceThresholdRule}', [ComplianceThresholdRuleController::class, 'update'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.update');
     Route::patch('/pengaturan/compliance-threshold/{complianceThresholdRule}/toggle', [ComplianceThresholdRuleController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.toggle');
-
-    /* Customer Import Wizard */
     Route::get('/customers/import', [CustomerImportController::class, 'index'])->name('customers.import');
     Route::post('/customers/import/preview', [CustomerImportController::class, 'preview'])->name('customers.import.preview');
 });
