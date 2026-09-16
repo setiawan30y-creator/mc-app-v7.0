@@ -24,10 +24,15 @@ class CashClosing extends Model
         'closing_no',
         'closing_date',
         'status',
+        'expected_amount',
+        'physical_amount',
+        'difference_amount',
         'notes',
         'prepared_by',
         'approved_by',
+        'closed_by',
         'approved_at',
+        'closed_at',
         'rejected_at',
         'rejection_reason',
     ];
@@ -36,7 +41,11 @@ class CashClosing extends Model
     {
         return [
             'closing_date' => 'datetime',
+            'expected_amount' => 'decimal:2',
+            'physical_amount' => 'decimal:2',
+            'difference_amount' => 'decimal:2',
             'approved_at' => 'datetime',
+            'closed_at' => 'datetime',
             'rejected_at' => 'datetime',
         ];
     }
@@ -53,26 +62,22 @@ class CashClosing extends Model
 
     public function preparedBy(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'prepared_by'
-        );
+        return $this->belongsTo(User::class, 'prepared_by');
     }
 
     public function approvedBy(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'approved_by'
-        );
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
     }
 
     public function details(): HasMany
     {
-        return $this->hasMany(
-            CashClosingDetail::class,
-            'closing_id'
-        );
+        return $this->hasMany(CashClosingDetail::class, 'closing_id');
     }
 
     public function isDraft(): bool
@@ -90,8 +95,18 @@ class CashClosing extends Model
         return $this->status === 'approved';
     }
 
+    public function isClosed(): bool
+    {
+        return $this->status === 'closed';
+    }
+
     public function isRejected(): bool
     {
         return $this->status === 'rejected';
+    }
+
+    public function isBalanced(): bool
+    {
+        return bccomp((string) $this->difference_amount, '0', 2) === 0;
     }
 }
