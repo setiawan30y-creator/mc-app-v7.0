@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\CashClosing;
 use App\Models\CurrencyDenomination;
+use App\Services\CashClosingReconciliationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CashClosingController extends Controller
 {
+    public function __construct(private CashClosingReconciliationService $reconciliation)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = auth()->user();
@@ -49,7 +54,8 @@ class CashClosingController extends Controller
             ->with('variant.currency')
             ->active()
             ->ordered()
-            ->get();
+            ->get()
+            ->filter(fn ($denomination) => ($denomination->variant->currency->code ?? null) === 'IDR');
 
         $existing = CashClosing::query()
             ->where('tenant_id', $user->tenant_id)
@@ -60,7 +66,14 @@ class CashClosingController extends Controller
             ->latest('closing_date')
             ->first();
 
-        return view('closing.create', compact('denominations', 'businessDate', 'shift', 'existing'));
+        $preview = $this->reconciliation->calculate(
+            $user->tenant_id,
+            $user->branch_id,
+            $businessDate,
+            $shift
+        );
+
+        return view('closing.create', compact('denominations', 'businessDate', 'shift', 'existing', 'preview'));
     }
 
     public function store(Request $request)
@@ -98,7 +111,6 @@ class CashClosingController extends Controller
                 ->whereDate('business_date', $validated['business_date'])
                 ->count() + 1;
 
-            $physicalTotal = '0.00';
             $closing = CashClosing::create([
                 'id' => (string) Str::ulid(),
                 'tenant_id' => $user->tenant_id,
@@ -118,6 +130,7 @@ class CashClosingController extends Controller
                 ->with('variant.currency')
                 ->whereIn('id', array_keys($quantities))
                 ->get()
+                ->filter(fn ($denomination) => ($denomination->variant->currency->code ?? null) === 'IDR')
                 ->keyBy('id');
 
             foreach ($quantities as $denominationId => $quantity) {
@@ -128,7 +141,6 @@ class CashClosingController extends Controller
 
                 $denomination = $denominations[$denominationId];
                 $amount = round($quantity * (float) $denomination->value, 2);
-                $physicalTotal = number_format((float) $physicalTotal + $amount, 2, '.', '');
 
                 $closing->details()->create([
                     'id' => (string) Str::ulid(),
@@ -147,21 +159,62 @@ class CashClosingController extends Controller
             }
 
             $closing->update([
-                'physical_cash_amount' => $physicalTotal,
-                'physical_amount' => $physicalTotal,
+                'physical_cash_amount' => $closing->details()->sum('physical_amount'),
+                'physical_amount' => $closing->details()->sum('physical_amount'),
             ]);
 
-            return $closing;
+            return $this->reconciliation->apply($closing);
         });
 
         return redirect()
             ->route('closing.show', $closing)
-            ->with('success', 'Draft closing berhasil dibuat. Saldo sistem, bank, dan gantungan akan dihubungkan ke engine masing-masing pada tahap rekonsiliasi.');
+            ->with('success', 'Draft closing berhasil dibuat dan saldo sistem sudah dihitung dari ledger operasional.');
+    }
+
+    public function refresh(CashClosing $closing)
+    {
+        $this->authorizeScope($closing);
+
+        abort_if($closing->isClosed(), 422, 'Closing yang sudah ditutup tidak dapat dihitung ulang.');
+
+        $this->reconciliation->apply($closing);
+
+        return back()->with('success', 'Rekonsiliasi closing berhasil dihitung ulang dari ledger terbaru.');
+    }
+
+    public function close(CashClosing $closing)
+    {
+        $this->authorizeScope($closing);
+
+        abort_if($closing->isClosed(), 422, 'Closing sudah ditutup.');
+        abort_if($closing->status === 'rejected', 422, 'Closing yang ditolak tidak dapat ditutup.');
+
+        $closing = $this->reconciliation->apply($closing);
+
+        if (! $this->reconciliation->canClose($closing)) {
+            return back()->withErrors([
+                'closing' => 'Closing belum balance. Selisih kas harus Rp 0 sebelum closing dapat dikunci.',
+            ]);
+        }
+
+        $closing->update([
+            'status' => 'closed',
+            'closed_by' => auth()->id(),
+            'closed_at' => now(),
+        ]);
+
+        return redirect()
+            ->route('closing.show', $closing)
+            ->with('success', 'Closing berhasil ditutup dan dikunci.');
     }
 
     public function show(CashClosing $closing)
     {
         $this->authorizeScope($closing);
+
+        if (! $closing->isClosed()) {
+            $this->reconciliation->apply($closing);
+        }
 
         $closing->load([
             'details.currency',
