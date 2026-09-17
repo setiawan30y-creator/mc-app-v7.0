@@ -13,9 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
         .direction-switch{display:none!important}
-        .trx-row-direction-wrap{display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
-        .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
-        .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        /* 02: gunakan tombol bawaan setiap row; jangan tampilkan wrapper tambahan */
+        .row-direction{display:inline-flex!important;gap:3px;align-items:center;white-space:nowrap}
+        .trx-row-direction-wrap{display:none!important}
+        .row-direction-btn{border:1px solid #cfd9d4!important;background:#fff!important;color:#59665f!important;border-radius:4px!important;padding:5px 7px!important;font-size:9px!important;font-weight:700!important;cursor:pointer;line-height:1!important}
+        .row-direction-btn.active{background:#26352e!important;color:#fff!important;border-color:#26352e!important}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -33,51 +35,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return tr.querySelector('.direction-input')?.value === 'sell' ? 'sell' : 'buy';
     }
 
+    // Sinkronisasi state arah dengan tombol bawaan row dari create.blade.php.
     function setDirection(tr, direction) {
         const hidden = tr.querySelector('.direction-input');
         if (!hidden) return;
         hidden.value = direction;
         hidden.disabled = false;
-        const wrap = tr.querySelector('.trx-row-direction-wrap');
-        wrap?.querySelectorAll('[data-row-direction]').forEach(button => {
+        tr.querySelectorAll('.row-direction-btn').forEach(button => {
             button.classList.toggle('active', button.dataset.rowDirection === direction);
         });
         if (typeof refreshRate === 'function') refreshRate(tr);
     }
 
-    function ensureRowButtons(tr) {
-        const hidden = tr.querySelector('.direction-input');
-        const cell = hidden?.closest('td');
-        if (!hidden || !cell) return;
-
-        cell.querySelector('.trx-row-direction')?.remove();
-        let wrap = cell.querySelector('.trx-row-direction-wrap');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.className = 'trx-row-direction-wrap';
-            wrap.innerHTML = `
-                <button type="button" class="trx-row-direction-btn" data-row-direction="buy">BELI</button>
-                <button type="button" class="trx-row-direction-btn" data-row-direction="sell">JUAL</button>
-            `;
-            cell.appendChild(wrap);
-        }
-        setDirection(tr, getDirection(tr));
-    }
-
-    // 02 is now intentionally controlled only per item row.
-    // The old global BELI/JUAL/BELI-JUAL switch is hidden to avoid duplicated controls.
+    // Pastikan tombol bawaan setiap row selalu terlihat. Tidak membuat DOM tombol baru.
     function applyItemDirectionUI() {
-        getRows().forEach(tr => ensureRowButtons(tr));
+        getRows().forEach(tr => {
+            const hidden = tr.querySelector('.direction-input');
+            if (!hidden) return;
+            tr.querySelector('.row-direction')?.style.setProperty('display', 'inline-flex', 'important');
+            setDirection(tr, getDirection(tr));
+        });
     }
-
-    itemRows.addEventListener('click', event => {
-        const button = event.target.closest('[data-row-direction]');
-        if (!button) return;
-        const tr = button.closest('tr');
-        if (!tr) return;
-        setDirection(tr, button.dataset.rowDirection);
-        calculateBalance();
-    });
 
     const observer = new MutationObserver(mutations => {
         if (mutations.some(m => m.addedNodes.length || m.removedNodes.length)) {
