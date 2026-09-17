@@ -15,7 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
         .row-direction{display:none!important}
         .trx-row-direction-wrap{display:inline-flex!important;gap:4px;align-items:center;white-space:nowrap}
         .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 8px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
-        .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        .trx-row-direction-btn[data-row-direction="buy"].active{background:#198754!important;color:#fff!important;border-color:#198754!important}
+        .trx-row-direction-btn[data-row-direction="sell"].active{background:#dc3545!important;color:#fff!important;border-color:#dc3545!important}
+        .trx-row-direction-btn:not(.active){background:#fff!important;color:#59665f!important;border-color:#cfd9d4!important}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
