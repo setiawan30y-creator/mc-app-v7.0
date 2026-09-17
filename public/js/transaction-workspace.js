@@ -14,20 +14,43 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-negative{background:#fff9f7}
         .trx-row-direction{width:100%;font-size:10px;min-height:29px;height:29px;padding:3px 5px;border:1px solid #d5ded9;border-radius:4px;background:#fff;font-weight:700}
         .trx-direction-note{font-size:9px;margin-top:3px;color:#7a8580}
-        @media(max-width:900px){.trx-summary{grid-template-columns:1fr!important}}
+        .direction-switch{display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap}
+        .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:6px 13px;font-size:10px;font-weight:700;cursor:pointer}
+        .direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+        .payment-fields.split-mode .payment-field{display:block!important}
+        .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
+        .payment-split-note{grid-column:1/-1;font-size:9px;color:#7f8985;padding-top:1px}
+        .payment-balance{grid-column:1/-1;border:1px solid #dfe7e2;border-radius:5px;padding:7px 9px;font-size:10px;display:flex;justify-content:space-between;gap:8px;background:#fafcfb}
+        .payment-balance.ok{border-color:#cbd8d1;background:#f7fbf9}
+        .payment-balance.bad{border-color:#ead0d0;background:#fff7f7;color:#8d3535}
+        @media(max-width:900px){.trx-summary{grid-template-columns:1fr!important}.payment-fields.split-mode{grid-template-columns:1fr!important}}
     `;
     document.head.appendChild(style);
 
-    // The direction is per item, not global. Keep the existing global buttons only as a
-    // quick default for newly-added rows; each row can then be changed independently.
     const switchBox = page.querySelector('.direction-switch');
+    let globalDirection = 'buy';
+
+    // 02: exactly three transaction modes.
+    // BELI => every row BELI, JUAL => every row JUAL,
+    // BELI/JUAL => each row exposes its own BELI/JUAL dropdown.
     if (switchBox) {
-        const label = switchBox.parentElement?.querySelector('.trx-label');
-        if (label) label.textContent = 'Default Arah Item Baru';
-        const note = document.createElement('div');
-        note.className = 'trx-direction-note';
-        note.textContent = 'Setiap baris dapat BELI atau JUAL sendiri.';
-        switchBox.appendChild(note);
+        switchBox.innerHTML = `
+            <button type="button" class="direction-btn active" data-direction-mode="buy">BELI</button>
+            <button type="button" class="direction-btn" data-direction-mode="sell">JUAL</button>
+            <button type="button" class="direction-btn" data-direction-mode="mixed">BELI/JUAL</button>
+            <div class="trx-direction-note">Pilih BELI/JUAL untuk seluruh item, atau BELI/JUAL agar arah tiap baris fleksibel.</div>
+        `;
+
+        switchBox.querySelectorAll('[data-direction-mode]').forEach(button => {
+            button.addEventListener('click', () => {
+                switchBox.querySelectorAll('[data-direction-mode]').forEach(b => b.classList.remove('active'));
+                button.classList.add('active');
+                globalDirection = button.dataset.directionMode;
+                applyDirectionMode();
+                calculateBalance();
+            });
+        });
     }
 
     function addDirectionSelect(tr) {
@@ -35,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const hidden = tr.querySelector('.direction-input');
         const cell = hidden?.closest('td');
         if (!cell) return;
+
         const current = hidden.value === 'sell' ? 'sell' : 'buy';
         const select = document.createElement('select');
         select.className = 'trx-row-direction';
@@ -43,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = cell.querySelector('.direction-display');
         if (badge) badge.remove();
         cell.appendChild(select);
+
         select.addEventListener('change', () => {
             hidden.value = select.value;
             if (typeof refreshRate === 'function') refreshRate(tr);
@@ -50,15 +75,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function applyDirectionMode() {
+        itemRows.querySelectorAll('tr').forEach(tr => {
+            const hidden = tr.querySelector('.direction-input');
+            const select = tr.querySelector('.trx-row-direction');
+            if (!hidden) return;
+
+            if (globalDirection === 'mixed') {
+                if (!select) addDirectionSelect(tr);
+                const rowSelect = tr.querySelector('.trx-row-direction');
+                if (rowSelect) rowSelect.value = hidden.value === 'sell' ? 'sell' : 'buy';
+                hidden.disabled = false;
+            } else {
+                hidden.value = globalDirection;
+                hidden.disabled = false;
+                if (select) select.remove();
+            }
+
+            if (typeof refreshRate === 'function') refreshRate(tr);
+        });
+    }
+
     function transformRows() {
         itemRows.querySelectorAll('tr').forEach(addDirectionSelect);
+        applyDirectionMode();
     }
 
     const observer = new MutationObserver(() => transformRows());
     observer.observe(itemRows, {childList:true});
     transformRows();
 
-    // Replace the generic 3-box summary with operational BUY/SELL settlement totals.
+    // Replace the generic summary with operational BUY/SELL settlement totals.
     summary.innerHTML = `
         <div class="trx-summary-box">
             <div class="trx-summary-label">Total Jual</div>
@@ -89,11 +136,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function calculateBalance() {
         let sell = 0, buy = 0;
+        let itemCount = 0, qtyTotal = 0;
         itemRows.querySelectorAll('tr').forEach(tr => {
             const qty = Number(tr.querySelector('.qty-input')?.value) || 0;
             const rate = Number(tr.querySelector('.rate-input')?.value) || 0;
             const subtotal = qty * rate;
             const direction = tr.querySelector('.direction-input')?.value || 'buy';
+            if (tr.querySelector('.currency-input, select[name*="currency_id"]')) itemCount++;
+            qtyTotal += qty;
             if (direction === 'sell') sell += subtotal;
             else buy += subtotal;
         });
@@ -105,6 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('summarySell').textContent = moneySafe(sell);
         document.getElementById('summaryBuy').textContent = moneySafe(buy);
         document.getElementById('summaryDifference').textContent = moneySafe(absDiff);
+        document.getElementById('summaryItems').textContent = itemCount;
+        document.getElementById('summaryQty').textContent = `${qtyTotal} qty`;
 
         differenceBox.classList.remove('is-positive','is-negative','is-balance');
         settlementBox.classList.remove('is-positive','is-negative','is-balance');
@@ -130,7 +182,167 @@ document.addEventListener('DOMContentLoaded', () => {
             differenceBox.classList.add('is-balance');
             settlementBox.classList.add('is-balance');
         }
+
+        const hiddenDifference = document.getElementById('calculatedDifference');
+        if (hiddenDifference) hiddenDifference.value = diff.toFixed(2);
+        updatePaymentRequirement(absDiff);
     }
+
+    // 04: CASH / TRANSFER / SPLIT. Split always shows both sides.
+    const paymentMethodInput = document.getElementById('paymentMethod');
+    const paymentMethods = page.querySelectorAll('.payment-method-btn');
+    const paymentFields = page.querySelector('.payment-fields');
+    const cashInput = page.querySelector('[name="cash_amount"]');
+    const transferInput = page.querySelector('[name="transfer_amount"]');
+    const paymentError = page.querySelector('.payment-error');
+    const bankField = page.querySelector('[name="bank_account_id"]')?.closest('.payment-field');
+
+    function fieldByName(name) {
+        const input = page.querySelector(`[name="${name}"]`);
+        return input?.closest('.payment-field');
+    }
+
+    const cashField = fieldByName('cash_amount');
+    const transferField = fieldByName('transfer_amount');
+
+    function updateSplitLayout() {
+        const method = paymentMethodInput?.value || 'cash';
+        paymentMethods.forEach(btn => btn.classList.toggle('active', btn.dataset.method === method));
+
+        if (!paymentFields) return;
+        paymentFields.classList.toggle('split-mode', method === 'split');
+
+        const allFields = paymentFields.querySelectorAll('.payment-field');
+        allFields.forEach(field => field.classList.remove('show'));
+
+        if (method === 'cash') {
+            cashField?.classList.add('show');
+        } else if (method === 'transfer') {
+            transferField?.classList.add('show');
+            bankField?.classList.add('show');
+        } else if (method === 'split') {
+            cashField?.classList.add('show');
+            transferField?.classList.add('show');
+            bankField?.classList.add('show');
+            ensureSplitDecorations();
+        }
+    }
+
+    function ensureSplitDecorations() {
+        if (!paymentFields) return;
+        if (!paymentFields.querySelector('.payment-split-note')) {
+            const note = document.createElement('div');
+            note.className = 'payment-split-note';
+            note.textContent = 'Split selalu menggunakan dua sumber: Cash + Transfer. Total keduanya harus sama dengan kebutuhan IDR.';
+            paymentFields.prepend(note);
+        }
+        if (!paymentFields.querySelector('.payment-balance')) {
+            const balance = document.createElement('div');
+            balance.className = 'payment-balance';
+            balance.innerHTML = '<span>Total dibayar</span><strong id="splitPaidTotal">Rp0</strong>';
+            paymentFields.appendChild(balance);
+        }
+    }
+
+    function updatePaymentRequirement(required) {
+        const requiredEl = document.getElementById('paymentRequired');
+        if (requiredEl) requiredEl.textContent = moneySafe(required);
+
+        const method = paymentMethodInput?.value || 'cash';
+        const total = (Number(cashInput?.value)||0) + (Number(transferInput?.value)||0);
+        const balance = paymentFields?.querySelector('.payment-balance');
+        if (balance) {
+            const totalEl = balance.querySelector('#splitPaidTotal');
+            if (totalEl) totalEl.textContent = moneySafe(total);
+            const ok = method === 'split' ? Math.abs(total-required) < 0.01 : true;
+            balance.classList.toggle('ok', ok);
+            balance.classList.toggle('bad', !ok);
+        }
+
+        if (paymentError) {
+            if (method === 'split' && required > 0 && Math.abs(total-required) >= 0.01) {
+                paymentError.textContent = `Cash + Transfer harus sama dengan ${moneySafe(required)}.`;
+                paymentError.style.display = 'block';
+            } else {
+                paymentError.style.display = 'none';
+            }
+        }
+    }
+
+    function setPaymentMethod(method) {
+        if (paymentMethodInput) paymentMethodInput.value = method;
+        updateSplitLayout();
+
+        const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
+        if (method === 'cash') {
+            if (cashInput) cashInput.value = required.toFixed(2);
+            if (transferInput) transferInput.value = '';
+        } else if (method === 'transfer') {
+            if (transferInput) transferInput.value = required.toFixed(2);
+            if (cashInput) cashInput.value = '';
+        } else if (method === 'split') {
+            // Preserve an already entered side; if both are empty, put the full amount on Cash.
+            const cash = Number(cashInput?.value)||0;
+            const transfer = Number(transferInput?.value)||0;
+            if (cash === 0 && transfer === 0 && cashInput) cashInput.value = required.toFixed(2);
+        }
+        updatePaymentRequirement(required);
+    }
+
+    paymentMethods.forEach(btn => {
+        btn.addEventListener('click', () => setPaymentMethod(btn.dataset.method));
+    });
+
+    function syncSplit(source) {
+        if ((paymentMethodInput?.value || 'cash') !== 'split') return;
+        const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
+        let cash = Number(cashInput?.value)||0;
+        let transfer = Number(transferInput?.value)||0;
+
+        if (source === 'cash') {
+            cash = Math.max(0, cash);
+            transfer = Math.max(0, required - cash);
+            if (transferInput) transferInput.value = transfer.toFixed(2);
+        } else {
+            transfer = Math.max(0, transfer);
+            cash = Math.max(0, required - transfer);
+            if (cashInput) cashInput.value = cash.toFixed(2);
+        }
+        updatePaymentRequirement(required);
+    }
+
+    cashInput?.addEventListener('input', () => syncSplit('cash'));
+    transferInput?.addEventListener('input', () => syncSplit('transfer'));
+
+    // Prevent browser submission when split is not exactly balanced.
+    page.querySelector('#transactionForm')?.addEventListener('submit', event => {
+        const method = paymentMethodInput?.value || 'cash';
+        const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
+        const cash = Number(cashInput?.value)||0;
+        const transfer = Number(transferInput?.value)||0;
+
+        if (method === 'split' && required > 0 && Math.abs((cash + transfer) - required) >= 0.01) {
+            event.preventDefault();
+            updatePaymentRequirement(required);
+            paymentFields?.scrollIntoView({behavior:'smooth',block:'center'});
+            return;
+        }
+
+        if (method === 'cash' && required > 0 && Math.abs(cash-required) >= 0.01) {
+            event.preventDefault();
+            if (cashInput) cashInput.value = required.toFixed(2);
+            updatePaymentRequirement(required);
+        }
+
+        if (method === 'transfer' && required > 0 && Math.abs(transfer-required) >= 0.01) {
+            event.preventDefault();
+            if (transferInput) transferInput.value = required.toFixed(2);
+            updatePaymentRequirement(required);
+        }
+    });
+
+    updateSplitLayout();
+    setPaymentMethod(paymentMethodInput?.value || 'cash');
 
     itemRows.addEventListener('input', calculateBalance);
     itemRows.addEventListener('change', calculateBalance);
