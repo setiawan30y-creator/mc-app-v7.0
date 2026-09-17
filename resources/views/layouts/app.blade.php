@@ -31,6 +31,7 @@
     </main>
 </div>
 <script src="{{ asset('js/transaction-workspace.js') }}"></script>
+<script src="{{ asset('js/transaction-direction-stabilizer.js') }}"></script>
 @stack('scripts')
 </body>
 </html>
