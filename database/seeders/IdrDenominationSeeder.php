@@ -38,21 +38,18 @@ class IdrDenominationSeeder extends Seeder
         ]);
 
         $denominations = [
-            [1000000, 'banknote', 'Rp 1.000.000', 1],
-            [500000, 'banknote', 'Rp 500.000', 2],
-            [200000, 'banknote', 'Rp 200.000', 3],
-            [100000, 'banknote', 'Rp 100.000', 4],
-            [75000, 'banknote', 'Rp 75.000', 5],
-            [50000, 'banknote', 'Rp 50.000', 6],
-            [20000, 'banknote', 'Rp 20.000', 7],
-            [10000, 'banknote', 'Rp 10.000', 8],
-            [5000, 'banknote', 'Rp 5.000', 9],
-            [2000, 'banknote', 'Rp 2.000', 10],
-            [1000, 'banknote', 'Rp 1.000', 11],
-            [1000, 'coin', 'Rp 1.000 Koin', 12],
-            [500, 'coin', 'Rp 500 Koin', 13],
-            [200, 'coin', 'Rp 200 Koin', 14],
-            [100, 'coin', 'Rp 100 Koin', 15],
+            [100000, 'banknote', 'Rp 100.000', 1],
+            [75000, 'banknote', 'Rp 75.000', 2],
+            [50000, 'banknote', 'Rp 50.000', 3],
+            [20000, 'banknote', 'Rp 20.000', 4],
+            [10000, 'banknote', 'Rp 10.000', 5],
+            [5000, 'banknote', 'Rp 5.000', 6],
+            [2000, 'banknote', 'Rp 2.000', 7],
+            [1000, 'banknote', 'Rp 1.000', 8],
+            [1000, 'coin', 'Rp 1.000 Koin', 9],
+            [500, 'coin', 'Rp 500 Koin', 10],
+            [200, 'coin', 'Rp 200 Koin', 11],
+            [100, 'coin', 'Rp 100 Koin', 12],
         ];
 
         foreach ($denominations as [$value, $type, $label, $sortOrder]) {
@@ -70,5 +67,11 @@ class IdrDenominationSeeder extends Seeder
                 ]
             );
         }
+
+        // Nonaktifkan pecahan yang tidak digunakan untuk Closing Kas Fisik.
+        CurrencyDenomination::query()
+            ->where('currency_variant_id', $variant->id)
+            ->whereIn('value', [200000, 500000, 1000000])
+            ->update(['is_active' => false]);
     }
 }
