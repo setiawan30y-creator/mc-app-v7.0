@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const page = document.querySelector('.trx-page');
     if (!page) return;
-
     const itemRows = document.getElementById('itemRows');
     const summary = document.getElementById('summaryTotal')?.closest('.trx-summary');
     if (!itemRows || !summary) return;
@@ -51,8 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const directionCell = cells[1];
             if (!directionCell) return;
 
-            const oldWrap = directionCell.querySelector('.row-direction');
-            oldWrap?.remove();
+            directionCell.querySelector('.row-direction')?.remove();
             directionCell.querySelector('.trx-row-direction-wrap')?.remove();
 
             let hidden = directionCell.querySelector('.direction-input');
@@ -76,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // One source of truth: every row owns exactly one BELI/JUAL control.
     ensureDirectionButtons();
 
     itemRows.addEventListener('click', event => {
@@ -88,11 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
         calculateBalance();
     });
 
-    const observer = new MutationObserver(() => {
-        ensureDirectionButtons();
-        calculateBalance();
+    // Observe only direct row additions. Do not observe nested button mutations.
+    const observer = new MutationObserver(mutations => {
+        if (mutations.some(m => m.addedNodes.length || m.removedNodes.length)) {
+            ensureDirectionButtons();
+            calculateBalance();
+        }
     });
-    observer.observe(itemRows, {childList:true, subtree:true});
+    observer.observe(itemRows, {childList:true});
 
     summary.innerHTML = `
         <div class="trx-summary-box"><div class="trx-summary-label">Total Jual</div><div class="trx-summary-value" id="summarySell">Rp0</div><div class="trx-summary-note">Valuta customer diserahkan</div></div>
