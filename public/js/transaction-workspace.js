@@ -12,11 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-balance{border-color:#cbd8d1}
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
-        .trx-row-direction-ui{display:flex;gap:3px;align-items:center;white-space:nowrap}
-        .trx-row-direction-ui .row-direction-btn{border:1px solid #d1dbd6;background:#fff;color:#66736c;border-radius:4px;padding:4px 7px;font-size:9px;font-weight:700;line-height:1;cursor:pointer}
-        .trx-row-direction-ui .row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-        .trx-row-direction-ui .row-direction-btn:hover{border-color:#9eafa6}
-        .trx-row-direction-hidden{display:none!important}
+        .trx-row-direction{width:100%;font-size:10px;min-height:29px;height:29px;padding:3px 5px;border:1px solid #d5ded9;border-radius:4px;background:#fff;font-weight:700}
         .trx-direction-note{font-size:9px;margin-top:3px;color:#7a8580}
         .direction-switch{display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap}
         .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:6px 13px;font-size:10px;font-weight:700;cursor:pointer}
@@ -54,50 +50,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addDirectionControls(tr) {
-        if (!tr) return;
+    function addDirectionSelect(tr) {
+        if (!tr || tr.querySelector('.trx-row-direction')) return;
         const hidden = tr.querySelector('.direction-input');
         const cell = hidden?.closest('td');
-        if (!hidden || !cell) return;
+        if (!cell) return;
 
-        let box = cell.querySelector('.trx-row-direction-ui');
-        if (!box) {
-            box = document.createElement('div');
-            box.className = 'trx-row-direction-ui';
-            cell.appendChild(box);
-        }
+        const current = hidden.value === 'sell' ? 'sell' : 'buy';
+        const select = document.createElement('select');
+        select.className = 'trx-row-direction';
+        select.innerHTML = '<option value="buy">BELI</option><option value="sell">JUAL</option>';
+        select.value = current;
+        const badge = cell.querySelector('.direction-display');
+        if (badge) badge.remove();
+        cell.appendChild(select);
 
-        const value = hidden.value === 'sell' ? 'sell' : 'buy';
-        box.innerHTML = `
-            <button type="button" class="row-direction-btn ${value === 'buy' ? 'active' : ''}" data-row-direction="buy">BELI</button>
-            <button type="button" class="row-direction-btn ${value === 'sell' ? 'active' : ''}" data-row-direction="sell">JUAL</button>
-        `;
-
-        box.querySelectorAll('[data-row-direction]').forEach(button => {
-            button.addEventListener('click', () => {
-                hidden.value = button.dataset.rowDirection;
-                box.querySelectorAll('[data-row-direction]').forEach(b => b.classList.remove('active'));
-                button.classList.add('active');
-                if (typeof refreshRate === 'function') refreshRate(tr);
-                calculateBalance();
-            });
+        select.addEventListener('change', () => {
+            hidden.value = select.value;
+            if (typeof refreshRate === 'function') refreshRate(tr);
+            calculateBalance();
         });
-    }
-
-    function removeDirectionControls(tr) {
-        tr.querySelector('.trx-row-direction-ui')?.remove();
     }
 
     function applyDirectionMode() {
         itemRows.querySelectorAll('tr').forEach(tr => {
             const hidden = tr.querySelector('.direction-input');
+            const select = tr.querySelector('.trx-row-direction');
             if (!hidden) return;
 
             if (globalDirection === 'mixed') {
-                addDirectionControls(tr);
+                if (!select) addDirectionSelect(tr);
+                const rowSelect = tr.querySelector('.trx-row-direction');
+                if (rowSelect) rowSelect.value = hidden.value === 'sell' ? 'sell' : 'buy';
+                hidden.disabled = false;
             } else {
                 hidden.value = globalDirection;
-                removeDirectionControls(tr);
+                hidden.disabled = false;
+                if (select) select.remove();
             }
 
             if (typeof refreshRate === 'function') refreshRate(tr);
@@ -105,11 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function transformRows() {
+        itemRows.querySelectorAll('tr').forEach(addDirectionSelect);
         applyDirectionMode();
     }
 
     const observer = new MutationObserver(() => transformRows());
-    observer.observe(itemRows, {childList:true, subtree:true});
+    observer.observe(itemRows, {childList:true});
     transformRows();
 
     // Replace the generic summary with operational BUY/SELL settlement totals.
