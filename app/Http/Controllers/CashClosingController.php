@@ -51,11 +51,11 @@ class CashClosingController extends Controller
         $shift = $request->input('shift', 'morning');
 
         $denominations = CurrencyDenomination::query()
-            ->with('variant.currency')
+            ->with(['variant.currency'])
             ->active()
+            ->whereHas('variant.currency', fn ($query) => $query->where('code', 'IDR'))
             ->ordered()
-            ->get()
-            ->filter(fn ($denomination) => ($denomination->variant->currency->code ?? null) === 'IDR');
+            ->get();
 
         $existing = CashClosing::query()
             ->where('tenant_id', $user->tenant_id)
@@ -127,10 +127,10 @@ class CashClosingController extends Controller
 
             $quantities = $request->input('physical_quantity', []);
             $denominations = CurrencyDenomination::query()
-                ->with('variant.currency')
+                ->with(['variant.currency'])
                 ->whereIn('id', array_keys($quantities))
+                ->whereHas('variant.currency', fn ($query) => $query->where('code', 'IDR'))
                 ->get()
-                ->filter(fn ($denomination) => ($denomination->variant->currency->code ?? null) === 'IDR')
                 ->keyBy('id');
 
             foreach ($quantities as $denominationId => $quantity) {
