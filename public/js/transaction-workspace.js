@@ -13,10 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
         .direction-switch{display:none!important}
-        .row-direction{display:inline-flex!important;gap:3px;align-items:center;white-space:nowrap}
-        .row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
-        .row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-        .trx-row-direction-wrap{display:none!important}
+        .row-direction{display:none!important}
+        .trx-row-direction-wrap{display:inline-flex!important;gap:4px;align-items:center;white-space:nowrap}
+        .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 8px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
+        .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -39,16 +39,48 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!hidden) return;
         hidden.value = direction;
         hidden.disabled = false;
-        tr.querySelectorAll('.row-direction-btn').forEach(button => {
+        tr.querySelectorAll('.trx-row-direction-btn').forEach(button => {
             button.classList.toggle('active', button.dataset.rowDirection === direction);
         });
         if (typeof refreshRate === 'function') refreshRate(tr);
     }
 
-    // Direction buttons are rendered by create.blade.php for every row, including rows added later.
-    // Keep this script focused on state/calculation and do not inject a second button set.
+    function ensureDirectionButtons() {
+        getRows().forEach((tr, index) => {
+            const cells = tr.querySelectorAll('td');
+            const directionCell = cells[1];
+            if (!directionCell) return;
+
+            const oldWrap = directionCell.querySelector('.row-direction');
+            oldWrap?.remove();
+            directionCell.querySelector('.trx-row-direction-wrap')?.remove();
+
+            let hidden = directionCell.querySelector('.direction-input');
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.className = 'direction-input';
+                hidden.name = `items[${index}][direction]`;
+                hidden.value = 'buy';
+                directionCell.appendChild(hidden);
+            }
+
+            const wrap = document.createElement('div');
+            wrap.className = 'trx-row-direction-wrap';
+            wrap.innerHTML = `
+                <button type="button" class="trx-row-direction-btn" data-row-direction="buy">BELI</button>
+                <button type="button" class="trx-row-direction-btn" data-row-direction="sell">JUAL</button>
+            `;
+            directionCell.appendChild(wrap);
+            setDirection(tr, getDirection(tr));
+        });
+    }
+
+    // One source of truth: every row owns exactly one BELI/JUAL control.
+    ensureDirectionButtons();
+
     itemRows.addEventListener('click', event => {
-        const button = event.target.closest('.row-direction-btn');
+        const button = event.target.closest('.trx-row-direction-btn');
         if (!button) return;
         const tr = button.closest('tr');
         if (!tr) return;
@@ -56,27 +88,17 @@ document.addEventListener('DOMContentLoaded', () => {
         calculateBalance();
     });
 
+    const observer = new MutationObserver(() => {
+        ensureDirectionButtons();
+        calculateBalance();
+    });
+    observer.observe(itemRows, {childList:true, subtree:true});
+
     summary.innerHTML = `
-        <div class="trx-summary-box">
-            <div class="trx-summary-label">Total Jual</div>
-            <div class="trx-summary-value" id="summarySell">Rp0</div>
-            <div class="trx-summary-note">Valuta customer diserahkan</div>
-        </div>
-        <div class="trx-summary-box">
-            <div class="trx-summary-label">Total Beli</div>
-            <div class="trx-summary-value" id="summaryBuy">Rp0</div>
-            <div class="trx-summary-note">Valuta customer terima</div>
-        </div>
-        <div class="trx-summary-box is-balance" id="summaryDifferenceBox">
-            <div class="trx-summary-label" id="summaryDifferenceLabel">Selisih Rp</div>
-            <div class="trx-summary-value" id="summaryDifference">Rp0</div>
-            <div class="trx-summary-note" id="summaryDifferenceNote">Nilai bersih</div>
-        </div>
-        <div class="trx-summary-box" id="summarySettlementBox">
-            <div class="trx-summary-label" id="summarySettlementLabel">Status</div>
-            <div class="trx-summary-value" id="summarySettlement">PAS</div>
-            <div class="trx-summary-note">Menjadi dasar pembayaran</div>
-        </div>
+        <div class="trx-summary-box"><div class="trx-summary-label">Total Jual</div><div class="trx-summary-value" id="summarySell">Rp0</div><div class="trx-summary-note">Valuta customer diserahkan</div></div>
+        <div class="trx-summary-box"><div class="trx-summary-label">Total Beli</div><div class="trx-summary-value" id="summaryBuy">Rp0</div><div class="trx-summary-note">Valuta customer terima</div></div>
+        <div class="trx-summary-box is-balance" id="summaryDifferenceBox"><div class="trx-summary-label" id="summaryDifferenceLabel">Selisih Rp</div><div class="trx-summary-value" id="summaryDifference">Rp0</div><div class="trx-summary-note" id="summaryDifferenceNote">Nilai bersih</div></div>
+        <div class="trx-summary-box" id="summarySettlementBox"><div class="trx-summary-label" id="summarySettlementLabel">Status</div><div class="trx-summary-value" id="summarySettlement">PAS</div><div class="trx-summary-note">Menjadi dasar pembayaran</div></div>
         <span id="summaryItems" hidden>0</span><span id="summaryQty" hidden>0</span>
     `;
 
@@ -85,8 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateBalance() {
-        let sell = 0, buy = 0;
-        let itemCount = 0, qtyTotal = 0;
+        let sell = 0, buy = 0, itemCount = 0, qtyTotal = 0;
         getRows().forEach(tr => {
             const qty = Number(tr.querySelector('.qty-input')?.value) || 0;
             const rate = Number(tr.querySelector('.rate-input')?.value) || 0;
@@ -94,20 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const direction = getDirection(tr);
             if (tr.querySelector('.currency-input, select[name*="currency_id"]')) itemCount++;
             qtyTotal += qty;
-            if (direction === 'sell') sell += subtotal;
-            else buy += subtotal;
+            if (direction === 'sell') sell += subtotal; else buy += subtotal;
         });
-
-        const diff = sell - buy;
-        const absDiff = Math.abs(diff);
-        const differenceBox = document.getElementById('summaryDifferenceBox');
-        const settlementBox = document.getElementById('summarySettlementBox');
+        const diff = sell - buy, absDiff = Math.abs(diff);
         document.getElementById('summarySell').textContent = moneySafe(sell);
         document.getElementById('summaryBuy').textContent = moneySafe(buy);
         document.getElementById('summaryDifference').textContent = moneySafe(absDiff);
         document.getElementById('summaryItems').textContent = itemCount;
         document.getElementById('summaryQty').textContent = `${qtyTotal} qty`;
-
+        const differenceBox = document.getElementById('summaryDifferenceBox');
+        const settlementBox = document.getElementById('summarySettlementBox');
         differenceBox.classList.remove('is-positive','is-negative','is-balance');
         settlementBox.classList.remove('is-positive','is-negative','is-balance');
         if (diff > 0) {
@@ -129,7 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('summarySettlement').textContent = 'PAS';
             differenceBox.classList.add('is-balance'); settlementBox.classList.add('is-balance');
         }
-
         const hiddenDifference = document.getElementById('calculatedDifference');
         if (hiddenDifference) hiddenDifference.value = diff.toFixed(2);
         updatePaymentRequirement(absDiff);
@@ -143,10 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const paymentError = page.querySelector('.payment-error');
     const bankField = page.querySelector('[name="bank_account_id"]')?.closest('.payment-field');
 
-    function fieldByName(name) {
-        const input = page.querySelector(`[name="${name}"]`);
-        return input?.closest('.payment-field');
-    }
+    function fieldByName(name) { const input = page.querySelector(`[name="${name}"]`); return input?.closest('.payment-field'); }
     const cashField = fieldByName('cash_amount');
     const transferField = fieldByName('transfer_amount');
 
@@ -164,16 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function ensureSplitDecorations() {
         if (!paymentFields) return;
         if (!paymentFields.querySelector('.payment-split-note')) {
-            const note = document.createElement('div');
-            note.className = 'payment-split-note';
-            note.textContent = 'Split selalu menggunakan dua sumber: Cash + Transfer. Total keduanya harus sama dengan kebutuhan IDR.';
-            paymentFields.prepend(note);
+            const note = document.createElement('div'); note.className = 'payment-split-note'; note.textContent = 'Split selalu menggunakan dua sumber: Cash + Transfer. Total keduanya harus sama dengan kebutuhan IDR.'; paymentFields.prepend(note);
         }
         if (!paymentFields.querySelector('.payment-balance')) {
-            const balance = document.createElement('div');
-            balance.className = 'payment-balance';
-            balance.innerHTML = '<span>Total dibayar</span><strong id="splitPaidTotal">Rp0</strong>';
-            paymentFields.appendChild(balance);
+            const balance = document.createElement('div'); balance.className = 'payment-balance'; balance.innerHTML = '<span>Total dibayar</span><strong id="splitPaidTotal">Rp0</strong>'; paymentFields.appendChild(balance);
         }
     }
 
@@ -190,10 +197,8 @@ document.addEventListener('DOMContentLoaded', () => {
             balance.classList.toggle('ok', ok); balance.classList.toggle('bad', !ok);
         }
         if (paymentError) {
-            if (method === 'split' && required > 0 && Math.abs(total-required) >= 0.01) {
-                paymentError.textContent = `Cash + Transfer harus sama dengan ${moneySafe(required)}.`;
-                paymentError.style.display = 'block';
-            } else paymentError.style.display = 'none';
+            if (method === 'split' && required > 0 && Math.abs(total-required) >= 0.01) { paymentError.textContent = `Cash + Transfer harus sama dengan ${moneySafe(required)}.`; paymentError.style.display = 'block'; }
+            else paymentError.style.display = 'none';
         }
     }
 
@@ -203,13 +208,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
         if (method === 'cash') { if (cashInput) cashInput.value = required.toFixed(2); if (transferInput) transferInput.value = ''; }
         else if (method === 'transfer') { if (transferInput) transferInput.value = required.toFixed(2); if (cashInput) cashInput.value = ''; }
-        else if (method === 'split') {
-            const cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0;
-            if (cash === 0 && transfer === 0 && cashInput) cashInput.value = required.toFixed(2);
-        }
+        else if (method === 'split') { const cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0; if (cash === 0 && transfer === 0 && cashInput) cashInput.value = required.toFixed(2); }
         updatePaymentRequirement(required);
     }
-
     paymentMethods.forEach(btn => btn.addEventListener('click', () => setPaymentMethod(btn.dataset.method)));
 
     function syncSplit(source) {
@@ -227,9 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const method = paymentMethodInput?.value || 'cash';
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
         const cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0;
-        if (method === 'split' && required > 0 && Math.abs((cash + transfer) - required) >= 0.01) {
-            event.preventDefault(); updatePaymentRequirement(required); paymentFields?.scrollIntoView({behavior:'smooth',block:'center'}); return;
-        }
+        if (method === 'split' && required > 0 && Math.abs((cash + transfer) - required) >= 0.01) { event.preventDefault(); updatePaymentRequirement(required); paymentFields?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
         if (method === 'cash' && required > 0 && Math.abs(cash-required) >= 0.01) { event.preventDefault(); if (cashInput) cashInput.value = required.toFixed(2); updatePaymentRequirement(required); }
         if (method === 'transfer' && required > 0 && Math.abs(transfer-required) >= 0.01) { event.preventDefault(); if (transferInput) transferInput.value = required.toFixed(2); updatePaymentRequirement(required); }
     });
