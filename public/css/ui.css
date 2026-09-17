@@ -167,6 +167,45 @@ table tbody tr td[colspan] { color: var(--ui-text-muted); }
     height: 11px !important;
 }
 
+/* TRANSAKSI BARU — 01 CUSTOMER: HORIZONTAL WORKSPACE */
+.trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
+    display: grid !important;
+    grid-template-columns: minmax(280px, 2.8fr) minmax(135px, 1fr) minmax(150px, 1.1fr) minmax(150px, 1.1fr);
+    gap: 8px !important;
+    margin: 0 !important;
+}
+
+.trx-page > form > .trx-paper:first-of-type .trx-section-body > .row > [class*="col-"] {
+    width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+    padding: 0 !important;
+}
+
+.trx-page > form > .trx-paper:first-of-type .customer-meta {
+    min-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 1050px) and (min-width: 901px) {
+    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
+        grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(120px, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+    }
+
+    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row > [class*="col-"]:first-child {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 768px) {
     table:not(.table-borderless) { min-width: 640px; }
 }
