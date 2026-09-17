@@ -1,6 +1,36 @@
 document.addEventListener('DOMContentLoaded', () => {
     const getRows = () => document.querySelectorAll('#itemRows > tr');
 
+    // Modul 02 · ITEM TRANSAKSI: warna hanya saat tombol arah aktif.
+    if (!document.getElementById('transaction-direction-colors')) {
+        const style = document.createElement('style');
+        style.id = 'transaction-direction-colors';
+        style.textContent = `
+            .trx-row-direction-wrap{display:flex;gap:4px}
+            .trx-row-direction-btn{
+                border:1px solid #d1dbd6;
+                background:#fff;
+                color:#66736c;
+                border-radius:4px;
+                padding:3px 5px;
+                font-size:8px;
+                font-weight:700;
+                cursor:pointer;
+            }
+            .trx-row-direction-btn[data-row-direction="buy"].active{
+                background:#198754;
+                color:#fff;
+                border-color:#198754;
+            }
+            .trx-row-direction-btn[data-row-direction="sell"].active{
+                background:#dc3545;
+                color:#fff;
+                border-color:#dc3545;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     function ensureRowDirection(tr, index) {
         const cells = tr.querySelectorAll('td');
         const cell = cells[1];
@@ -42,16 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
         [0, 50, 150, 300, 600].forEach(delay => setTimeout(ensureAllRows, delay));
     }
 
-    // Handle the existing + Tambah Item action without depending on its internal implementation.
     document.addEventListener('click', event => {
         if (event.target.closest('#addItem')) repairSoon();
     }, true);
 
-    // Catch rows inserted into the current tbody.
     const bodyObserver = new MutationObserver(() => repairSoon());
     bodyObserver.observe(document.body, { childList: true, subtree: true });
 
-    // Initial row and any rows already rendered.
     repairSoon();
 
     document.addEventListener('click', event => {
