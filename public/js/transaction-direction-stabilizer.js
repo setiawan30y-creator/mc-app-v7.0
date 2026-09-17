@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const getRows = () => document.querySelectorAll('#itemRows > tr');
 
-    // Modul 02 · ITEM TRANSAKSI: warna hanya saat tombol arah aktif.
+    // Modul 02 · ITEM TRANSAKSI: BELI hijau dan JUAL merah hanya setelah dipilih.
     if (!document.getElementById('transaction-direction-colors')) {
         const style = document.createElement('style');
         style.id = 'transaction-direction-colors';
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hidden.type = 'hidden';
             hidden.className = 'direction-input';
             hidden.name = `items[${index}][direction]`;
-            hidden.value = 'buy';
+            hidden.value = '';
             cell.appendChild(hidden);
         }
 
@@ -58,9 +58,9 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.appendChild(wrap);
         }
 
-        const direction = hidden.value === 'sell' ? 'sell' : 'buy';
+        const direction = hidden.value === 'sell' ? 'sell' : hidden.value === 'buy' ? 'buy' : '';
         wrap.querySelectorAll('[data-row-direction]').forEach(button => {
-            button.classList.toggle('active', button.dataset.rowDirection === direction);
+            button.classList.toggle('active', direction !== '' && button.dataset.rowDirection === direction);
         });
     }
 
