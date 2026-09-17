@@ -10,9 +10,12 @@
     .closing-btn{font-size:12px;font-weight:600;padding:7px 11px;border-radius:7px}
     .closing-paper{background:#fff;border:1px solid #dfe7e2;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden}
     .closing-filter{padding:10px 12px;border-bottom:1px solid #dfe7e2;background:#fafcfb}
+    .closing-filter form{display:flex;align-items:end;gap:8px;flex-wrap:nowrap}
+    .closing-filter .filter-field{flex:0 0 190px}
+    .closing-filter .filter-actions{display:flex;gap:6px;align-items:end;flex:0 0 auto}
     .closing-filter .form-label{font-size:10px;margin-bottom:3px;color:#65716b}
-    .closing-filter .form-control,.closing-filter .form-select{font-size:12px;min-height:31px;padding:4px 8px}
-    .closing-filter .btn{font-size:11px;padding:6px 10px}
+    .closing-filter .form-control,.closing-filter .form-select{font-size:12px;min-height:31px;height:31px;padding:4px 8px}
+    .closing-filter .btn{font-size:11px;height:31px;padding:5px 10px}
     .closing-table{font-size:12px;margin:0!important}
     .closing-table th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#68746e;background:#f4f7f5!important;white-space:nowrap;padding:6px 8px!important}
     .closing-table td{padding:5px 8px!important;line-height:1.25;vertical-align:middle}
@@ -28,7 +31,9 @@
         .closing-title{font-size:18px}
         .closing-head .closing-btn{white-space:nowrap}
         .closing-paper{overflow-x:auto}
-        .closing-filter{min-width:620px}
+        .closing-filter{overflow-x:auto}
+        .closing-filter form{min-width:430px}
+        .closing-filter .filter-field{flex-basis:160px}
         .closing-table{min-width:780px}
     }
 </style>
@@ -49,12 +54,12 @@
 
     <div class="closing-paper mb-3">
         <div class="closing-filter">
-            <form method="GET" action="{{ route('closing.index') }}" class="row g-2 align-items-end">
-                <div class="col-md-3">
+            <form method="GET" action="{{ route('closing.index') }}">
+                <div class="filter-field">
                     <label class="form-label">Tanggal Bisnis</label>
                     <input type="date" name="date" value="{{ request('date') }}" class="form-control">
                 </div>
-                <div class="col-md-3">
+                <div class="filter-field">
                     <label class="form-label">Shift</label>
                     <select name="shift" class="form-select">
                         <option value="">Semua Shift</option>
@@ -62,7 +67,7 @@
                         <option value="afternoon" @selected(request('shift') === 'afternoon')>Sore</option>
                     </select>
                 </div>
-                <div class="col-md-3 d-flex gap-2">
+                <div class="filter-actions">
                     <button class="btn btn-outline-dark">Filter</button>
                     <a href="{{ route('closing.index') }}" class="btn btn-outline-secondary">Reset</a>
                 </div>
