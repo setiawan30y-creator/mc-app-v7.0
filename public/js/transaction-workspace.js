@@ -12,7 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-balance{border-color:#cbd8d1}
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
-        .trx-row-direction{width:100%;font-size:10px;min-height:29px;height:29px;padding:3px 5px;border:1px solid #d5ded9;border-radius:4px;background:#fff;font-weight:700}
+        .trx-row-direction-ui{display:flex;gap:3px;align-items:center;white-space:nowrap}
+        .trx-row-direction-ui .row-direction-btn{border:1px solid #d1dbd6;background:#fff;color:#66736c;border-radius:4px;padding:4px 7px;font-size:9px;font-weight:700;line-height:1;cursor:pointer}
+        .trx-row-direction-ui .row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        .trx-row-direction-ui .row-direction-btn:hover{border-color:#9eafa6}
+        .trx-row-direction-hidden{display:none!important}
         .trx-direction-note{font-size:9px;margin-top:3px;color:#7a8580}
         .direction-switch{display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap}
         .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:6px 13px;font-size:10px;font-weight:700;cursor:pointer}
@@ -31,9 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const switchBox = page.querySelector('.direction-switch');
     let globalDirection = 'buy';
 
-    // 02: exactly three transaction modes.
-    // BELI => every row BELI, JUAL => every row JUAL,
-    // BELI/JUAL => each row exposes its own BELI/JUAL dropdown.
     if (switchBox) {
         switchBox.innerHTML = `
             <button type="button" class="direction-btn active" data-direction-mode="buy">BELI</button>
@@ -53,43 +54,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addDirectionSelect(tr) {
-        if (!tr || tr.querySelector('.trx-row-direction')) return;
+    function addDirectionControls(tr) {
+        if (!tr) return;
         const hidden = tr.querySelector('.direction-input');
         const cell = hidden?.closest('td');
-        if (!cell) return;
+        if (!hidden || !cell) return;
 
-        const current = hidden.value === 'sell' ? 'sell' : 'buy';
-        const select = document.createElement('select');
-        select.className = 'trx-row-direction';
-        select.innerHTML = '<option value="buy">BELI</option><option value="sell">JUAL</option>';
-        select.value = current;
-        const badge = cell.querySelector('.direction-display');
-        if (badge) badge.remove();
-        cell.appendChild(select);
+        let box = cell.querySelector('.trx-row-direction-ui');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'trx-row-direction-ui';
+            cell.appendChild(box);
+        }
 
-        select.addEventListener('change', () => {
-            hidden.value = select.value;
-            if (typeof refreshRate === 'function') refreshRate(tr);
-            calculateBalance();
+        const value = hidden.value === 'sell' ? 'sell' : 'buy';
+        box.innerHTML = `
+            <button type="button" class="row-direction-btn ${value === 'buy' ? 'active' : ''}" data-row-direction="buy">BELI</button>
+            <button type="button" class="row-direction-btn ${value === 'sell' ? 'active' : ''}" data-row-direction="sell">JUAL</button>
+        `;
+
+        box.querySelectorAll('[data-row-direction]').forEach(button => {
+            button.addEventListener('click', () => {
+                hidden.value = button.dataset.rowDirection;
+                box.querySelectorAll('[data-row-direction]').forEach(b => b.classList.remove('active'));
+                button.classList.add('active');
+                if (typeof refreshRate === 'function') refreshRate(tr);
+                calculateBalance();
+            });
         });
+    }
+
+    function removeDirectionControls(tr) {
+        tr.querySelector('.trx-row-direction-ui')?.remove();
     }
 
     function applyDirectionMode() {
         itemRows.querySelectorAll('tr').forEach(tr => {
             const hidden = tr.querySelector('.direction-input');
-            const select = tr.querySelector('.trx-row-direction');
             if (!hidden) return;
 
             if (globalDirection === 'mixed') {
-                if (!select) addDirectionSelect(tr);
-                const rowSelect = tr.querySelector('.trx-row-direction');
-                if (rowSelect) rowSelect.value = hidden.value === 'sell' ? 'sell' : 'buy';
-                hidden.disabled = false;
+                addDirectionControls(tr);
             } else {
                 hidden.value = globalDirection;
-                hidden.disabled = false;
-                if (select) select.remove();
+                removeDirectionControls(tr);
             }
 
             if (typeof refreshRate === 'function') refreshRate(tr);
@@ -97,12 +105,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function transformRows() {
-        itemRows.querySelectorAll('tr').forEach(addDirectionSelect);
         applyDirectionMode();
     }
 
     const observer = new MutationObserver(() => transformRows());
-    observer.observe(itemRows, {childList:true});
+    observer.observe(itemRows, {childList:true, subtree:true});
     transformRows();
 
     // Replace the generic summary with operational BUY/SELL settlement totals.
@@ -188,7 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePaymentRequirement(absDiff);
     }
 
-    // 04: CASH / TRANSFER / SPLIT. Split always shows both sides.
     const paymentMethodInput = document.getElementById('paymentMethod');
     const paymentMethods = page.querySelectorAll('.payment-method-btn');
     const paymentFields = page.querySelector('.payment-fields');
@@ -281,7 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (transferInput) transferInput.value = required.toFixed(2);
             if (cashInput) cashInput.value = '';
         } else if (method === 'split') {
-            // Preserve an already entered side; if both are empty, put the full amount on Cash.
             const cash = Number(cashInput?.value)||0;
             const transfer = Number(transferInput?.value)||0;
             if (cash === 0 && transfer === 0 && cashInput) cashInput.value = required.toFixed(2);
@@ -314,7 +319,6 @@ document.addEventListener('DOMContentLoaded', () => {
     cashInput?.addEventListener('input', () => syncSplit('cash'));
     transferInput?.addEventListener('input', () => syncSplit('transfer'));
 
-    // Prevent browser submission when split is not exactly balanced.
     page.querySelector('#transactionForm')?.addEventListener('submit', event => {
         const method = paymentMethodInput?.value || 'cash';
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
@@ -342,11 +346,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     updateSplitLayout();
-    setPaymentMethod(paymentMethodInput?.value || 'cash');
-
-    itemRows.addEventListener('input', calculateBalance);
-    itemRows.addEventListener('change', calculateBalance);
-    const addButton = document.getElementById('addItem');
-    addButton?.addEventListener('click', () => setTimeout(() => { transformRows(); calculateBalance(); }, 0));
     calculateBalance();
 });
