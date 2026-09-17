@@ -13,6 +13,7 @@ use App\Http\Controllers\CustomerRiskMasterController;
 use App\Http\Controllers\RateController;
 use App\Http\Controllers\TenantSettingController;
 use App\Http\Controllers\ComplianceThresholdRuleController;
+use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\Settings\IsoCurrencyController;
 use App\Http\Controllers\TellerController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->n
 Route::middleware(['auth','tenant.context','branch.context'])->group(function () {
     Route::get('/', fn () => view('dashboard'))->middleware('permission:dashboard.view')->name('dashboard');
     Route::get('/teller', [TellerController::class, 'index'])->name('teller.index');
+    Route::get('/teller/transaction/create', [TransactionController::class, 'create'])->name('transactions.create');
+    Route::post('/teller/transaction', [TransactionController::class, 'store'])->name('transactions.store');
 
     /* Closing Operasional */
     Route::get('/closing', [CashClosingController::class, 'index'])->name('closing.index');
