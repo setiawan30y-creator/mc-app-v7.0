@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\Currency;
+use App\Models\McTransaction;
 use App\Models\RateSnapshot;
 use App\Services\McTransactionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -20,27 +22,16 @@ class TransactionController extends Controller
         $customers = Customer::query()
             ->where('tenant_id', $user->tenant_id)
             ->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))
-            ->where(function ($q) {
-                $q->whereNull('status')->orWhere('status', 'active');
-            })
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', 'active'))
             ->orderBy('full_name')
-            ->get([
-                'id',
-                'customer_number',
-                'full_name',
-                'phone',
-                'kyc_status',
-                'jenis_id',
-                'no_ktp',
-            ]);
+            ->get(['id', 'customer_number', 'full_name', 'phone', 'kyc_status', 'jenis_id', 'no_ktp']);
 
         $currencies = Currency::query()
             ->active()
             ->ordered()
             ->with(['variants' => function ($query) {
                 $query->active()->ordered()->with(['denominations' => function ($denominationQuery) {
-                    $denominationQuery->where('is_active', true)
-                        ->orderByDesc('value');
+                    $denominationQuery->where('is_active', true)->orderByDesc('value');
                 }]);
             }])
             ->get();
@@ -50,19 +41,57 @@ class TransactionController extends Controller
             ->active()
             ->with(['currency:id,code,name', 'variant:id,currency_id,name,code', 'denomination:id,currency_variant_id,value,type'])
             ->orderByDesc('effective_at')
-            ->get([
-                'id',
-                'tenant_id',
-                'currency_id',
-                'currency_variant_id',
-                'currency_denomination_id',
-                'effective_at',
-                'buy_rate',
-                'sell_rate',
-                'is_active',
-            ]);
+            ->get(['id', 'tenant_id', 'currency_id', 'currency_variant_id', 'currency_denomination_id', 'effective_at', 'buy_rate', 'sell_rate', 'is_active']);
 
         return view('transactions.create', compact('customers', 'currencies', 'rates'));
+    }
+
+    public function customerHistory(Request $request, string $customer): JsonResponse
+    {
+        $user = auth()->user();
+
+        $customerModel = Customer::query()
+            ->where('id', $customer)
+            ->where('tenant_id', $user->tenant_id)
+            ->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))
+            ->firstOrFail();
+
+        $transactions = McTransaction::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))
+            ->where('customer_id', $customerModel->id)
+            ->with(['items.currency:id,code,name'])
+            ->latest('transaction_date')
+            ->latest('created_at')
+            ->limit(8)
+            ->get();
+
+        $history = $transactions->map(function (McTransaction $transaction) {
+            $directions = $transaction->items->pluck('direction')->filter()->unique()->values();
+            $currencies = $transaction->items->pluck('currency.code')->filter()->unique()->values();
+            $total = $transaction->items->sum(function ($item) {
+                return (float) $item->quantity * (float) $item->rate;
+            });
+
+            return [
+                'transaction_no' => $transaction->transaction_no,
+                'date' => optional($transaction->transaction_date)->format('d/m/Y H:i'),
+                'direction' => $directions->map(fn ($value) => strtoupper($value))->implode(' / '),
+                'currency' => $currencies->implode(', '),
+                'total' => round($total, 2),
+                'status' => $transaction->status,
+            ];
+        });
+
+        return response()->json([
+            'customer' => [
+                'id' => $customerModel->id,
+                'name' => $customerModel->full_name,
+                'number' => $customerModel->customer_number,
+                'phone' => $customerModel->phone,
+            ],
+            'history' => $history,
+        ]);
     }
 
     public function store(Request $request, McTransactionService $transactionService)
@@ -105,17 +134,12 @@ class TransactionController extends Controller
                 'items' => $validated['items'],
             ]);
 
-            return redirect()
-                ->route('teller.index')
-                ->with('success', 'Transaksi ' . $transaction->transaction_no . ' berhasil dibuat dan menunggu pembayaran.');
+            return redirect()->route('teller.index')->with('success', 'Transaksi ' . $transaction->transaction_no . ' berhasil dibuat dan menunggu pembayaran.');
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $e) {
             report($e);
-
-            return back()
-                ->withInput()
-                ->withErrors(['transaction' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['transaction' => $e->getMessage()]);
         }
     }
 }
