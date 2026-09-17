@@ -13,11 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
         .direction-switch{display:none!important}
-        /* 02: gunakan tombol bawaan setiap row; jangan tampilkan wrapper tambahan */
         .row-direction{display:inline-flex!important;gap:3px;align-items:center;white-space:nowrap}
+        .row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
+        .row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
         .trx-row-direction-wrap{display:none!important}
-        .row-direction-btn{border:1px solid #cfd9d4!important;background:#fff!important;color:#59665f!important;border-radius:4px!important;padding:5px 7px!important;font-size:9px!important;font-weight:700!important;cursor:pointer;line-height:1!important}
-        .row-direction-btn.active{background:#26352e!important;color:#fff!important;border-color:#26352e!important}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -35,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return tr.querySelector('.direction-input')?.value === 'sell' ? 'sell' : 'buy';
     }
 
-    // Sinkronisasi state arah dengan tombol bawaan row dari create.blade.php.
     function setDirection(tr, direction) {
         const hidden = tr.querySelector('.direction-input');
         if (!hidden) return;
@@ -47,24 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof refreshRate === 'function') refreshRate(tr);
     }
 
-    // Pastikan tombol bawaan setiap row selalu terlihat. Tidak membuat DOM tombol baru.
-    function applyItemDirectionUI() {
-        getRows().forEach(tr => {
-            const hidden = tr.querySelector('.direction-input');
-            if (!hidden) return;
-            tr.querySelector('.row-direction')?.style.setProperty('display', 'inline-flex', 'important');
-            setDirection(tr, getDirection(tr));
-        });
-    }
-
-    const observer = new MutationObserver(mutations => {
-        if (mutations.some(m => m.addedNodes.length || m.removedNodes.length)) {
-            applyItemDirectionUI();
-            calculateBalance();
-        }
+    // Direction buttons are rendered by create.blade.php for every row, including rows added later.
+    // Keep this script focused on state/calculation and do not inject a second button set.
+    itemRows.addEventListener('click', event => {
+        const button = event.target.closest('.row-direction-btn');
+        if (!button) return;
+        const tr = button.closest('tr');
+        if (!tr) return;
+        setDirection(tr, button.dataset.rowDirection);
+        calculateBalance();
     });
-    observer.observe(itemRows, {childList:true});
-    applyItemDirectionUI();
 
     summary.innerHTML = `
         <div class="trx-summary-box">
