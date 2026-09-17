@@ -27,10 +27,10 @@
     .customer-history-table th{font-size:9px;color:#738079;text-transform:uppercase;background:#fafcfb;white-space:nowrap}
     .customer-history-table td.amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     .customer-history-table .empty{text-align:center;color:#89938e;padding:9px}
-    .direction-switch{display:flex;gap:5px}
+    .direction-switch{display:none!important}
     .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:6px 13px;font-size:10px;font-weight:700;cursor:pointer}
     .direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-    .row-direction{display:flex;gap:3px;white-space:nowrap}
+    .row-direction{display:none!important}
     .row-direction-btn{border:1px solid #d1dbd6;background:#fff;color:#66736c;border-radius:4px;padding:3px 5px;font-size:8px;font-weight:700;cursor:pointer}
     .row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
     .trx-table{width:100%;border-collapse:collapse;font-size:11px}
@@ -86,7 +86,6 @@
         <div class="trx-paper">
             <div class="trx-section-head d-flex justify-content-between align-items-center"><span>02 · ITEM TRANSAKSI</span><span style="font-size:9px;color:#7d8983;font-weight:500">Setiap baris punya arah BELI / JUAL sendiri</span></div>
             <div class="trx-section-body">
-                <div class="mb-2"><div class="trx-label">Default Arah Item Baru</div><div class="direction-switch"><button type="button" class="direction-btn active" data-direction="buy">BELI / BUY</button><button type="button" class="direction-btn" data-direction="sell">JUAL / SELL</button></div></div>
                 <div class="trx-table-wrap"><table class="trx-table"><thead><tr><th>No</th><th>Arah</th><th>Currency</th><th>Series / Variant</th><th>Denomination</th><th>Qty</th><th>Rate</th><th>Subtotal</th><th></th></tr></thead><tbody id="itemRows"></tbody></table></div>
                 <button type="button" class="trx-add" id="addItem">+ Tambah Item</button>
             </div>
