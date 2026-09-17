@@ -28,6 +28,10 @@ class McTransaction extends Model
         'transaction_date',
         'status',
         'settlement_status',
+        'fund_source_type',
+        'fund_source_detail',
+        'transaction_purpose_type',
+        'transaction_purpose_detail',
         'source_of_funds',
         'transaction_purpose',
         'pickup_same_as_customer',
@@ -62,50 +66,15 @@ class McTransaction extends Model
         ];
     }
 
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class);
-    }
-
-    public function branch(): BelongsTo
-    {
-        return $this->belongsTo(Branch::class);
-    }
-
-    public function customer(): BelongsTo
-    {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function items(): HasMany
-    {
-        return $this->hasMany(McTransactionItem::class, 'transaction_id');
-    }
-
-    public function settlements(): HasMany
-    {
-        return $this->hasMany(McTransactionSettlement::class, 'transaction_id');
-    }
-
-    public function payments(): HasMany
-    {
-        return $this->hasMany(McTransactionPayment::class, 'transaction_id');
-    }
-
-    public function cashMovements(): HasMany
-    {
-        return $this->hasMany(CashMovement::class, 'transaction_id');
-    }
-
-    public function createdBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
-    public function updatedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'updated_by');
-    }
+    public function tenant(): BelongsTo { return $this->belongsTo(Tenant::class); }
+    public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
+    public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
+    public function items(): HasMany { return $this->hasMany(McTransactionItem::class, 'transaction_id'); }
+    public function settlements(): HasMany { return $this->hasMany(McTransactionSettlement::class, 'transaction_id'); }
+    public function payments(): HasMany { return $this->hasMany(McTransactionPayment::class, 'transaction_id'); }
+    public function cashMovements(): HasMany { return $this->hasMany(CashMovement::class, 'transaction_id'); }
+    public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
+    public function updatedBy(): BelongsTo { return $this->belongsTo(User::class, 'updated_by'); }
 
     public function fulfilledBooking(): ?Booking
     {
