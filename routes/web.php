@@ -26,6 +26,7 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/', fn () => view('dashboard'))->middleware('permission:dashboard.view')->name('dashboard');
     Route::get('/teller', [TellerController::class, 'index'])->name('teller.index');
     Route::get('/teller/transaction/create', [TransactionController::class, 'create'])->name('transactions.create');
+    Route::get('/teller/transaction/customer/{customer}/history', [TransactionController::class, 'customerHistory'])->name('transactions.customer-history');
     Route::post('/teller/transaction', [TransactionController::class, 'store'])->name('transactions.store');
 
     /* Closing Operasional */
@@ -78,17 +79,9 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/pengaturan/bank-accounts/create', [BankAccountController::class, 'create'])->middleware('permission:settings.manage')->name('settings.bank-accounts.create');
     Route::post('/pengaturan/bank-accounts', [BankAccountController::class, 'store'])->middleware('permission:settings.manage')->name('settings.bank-accounts.store');
     Route::get('/pengaturan/bank-accounts/{bankAccount}', [BankAccountController::class, 'show'])->middleware('permission:settings.manage')->name('settings.bank-accounts.show');
-    Route::get('/pengaturan/bank-accounts/{bankAccount}/edit', [BankAccountController::class, 'edit'])->middleware('permission:settings.manage')->name('settings.bank-accounts.edit');
     Route::put('/pengaturan/bank-accounts/{bankAccount}', [BankAccountController::class, 'update'])->middleware('permission:settings.manage')->name('settings.bank-accounts.update');
-    Route::patch('/pengaturan/bank-accounts/{bankAccount}/deactivate', [BankAccountController::class, 'deactivate'])->middleware('permission:settings.manage')->name('settings.bank-accounts.deactivate');
-    Route::patch('/pengaturan/bank-accounts/{bankAccount}/activate', [BankAccountController::class, 'activate'])->middleware('permission:settings.manage')->name('settings.bank-accounts.activate');
-    Route::get('/pengaturan/mutasi-bank', [BankMutationController::class, 'globalIndex'])->middleware('permission:settings.manage')->name('settings.bank-mutations.index');
-    Route::get('/pengaturan/bank-accounts/{bankAccount}/mutations', [BankMutationController::class, 'index'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.index');
-    Route::get('/pengaturan/bank-accounts/{bankAccount}/mutations/create', [BankMutationController::class, 'create'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.create');
-    Route::post('/pengaturan/bank-accounts/{bankAccount}/mutations', [BankMutationController::class, 'store'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.store');
-    Route::get('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}', [BankMutationController::class, 'show'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.show');
-    Route::patch('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}/reconcile', [BankMutationController::class, 'reconcile'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.reconcile');
-    Route::patch('/pengaturan/bank-accounts/{bankAccount}/mutations/{mutation}/ignore', [BankMutationController::class, 'ignore'])->middleware('permission:settings.manage')->name('settings.bank-accounts.mutations.ignore');
+    Route::delete('/pengaturan/bank-accounts/{bankAccount}', [BankAccountController::class, 'destroy'])->middleware('permission:settings.manage')->name('settings.bank-accounts.destroy');
+
     Route::get('/pengaturan/master-denomination', [CurrencyDenominationController::class, 'index'])->middleware('permission:settings.manage')->name('settings.denominations.index');
     Route::post('/pengaturan/master-denomination', [CurrencyDenominationController::class, 'store'])->middleware('permission:settings.manage')->name('settings.denominations.store');
     Route::put('/pengaturan/master-denomination/{currencyDenomination}', [CurrencyDenominationController::class, 'update'])->middleware('permission:settings.manage')->name('settings.denominations.update');
@@ -97,6 +90,4 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::post('/pengaturan/compliance-threshold', [ComplianceThresholdRuleController::class, 'store'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.store');
     Route::put('/pengaturan/compliance-threshold/{complianceThresholdRule}', [ComplianceThresholdRuleController::class, 'update'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.update');
     Route::patch('/pengaturan/compliance-threshold/{complianceThresholdRule}/toggle', [ComplianceThresholdRuleController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.toggle');
-    Route::get('/customers/import', [CustomerImportController::class, 'index'])->name('customers.import');
-    Route::post('/customers/import/preview', [CustomerImportController::class, 'preview'])->name('customers.import.preview');
 });
