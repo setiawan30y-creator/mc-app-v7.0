@@ -49,55 +49,20 @@ class TransactionController extends Controller
     public function customerHistory(Request $request, string $customer): JsonResponse
     {
         $user = auth()->user();
-
-        $customerModel = Customer::query()
-            ->where('id', $customer)
-            ->where('tenant_id', $user->tenant_id)
-            ->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))
-            ->firstOrFail();
-
-        $transactions = McTransaction::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))
-            ->where('customer_id', $customerModel->id)
-            ->with(['items.currency:id,code,name'])
-            ->latest('transaction_date')
-            ->latest('created_at')
-            ->limit(8)
-            ->get();
-
+        $customerModel = Customer::query()->where('id', $customer)->where('tenant_id', $user->tenant_id)->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))->firstOrFail();
+        $transactions = McTransaction::query()->where('tenant_id', $user->tenant_id)->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))->where('customer_id', $customerModel->id)->with(['items.currency:id,code,name'])->latest('transaction_date')->latest('created_at')->limit(8)->get();
         $history = $transactions->map(function (McTransaction $transaction) {
             $directions = $transaction->items->pluck('direction')->filter()->unique()->values();
             $currencies = $transaction->items->pluck('currency.code')->filter()->unique()->values();
-            $total = $transaction->items->sum(function ($item) {
-                return (float) $item->quantity * (float) $item->rate;
-            });
-
-            return [
-                'transaction_no' => $transaction->transaction_no,
-                'date' => optional($transaction->transaction_date)->format('d/m/Y H:i'),
-                'direction' => $directions->map(fn ($value) => strtoupper($value))->implode(' / '),
-                'currency' => $currencies->implode(', '),
-                'total' => round($total, 2),
-                'status' => $transaction->status,
-            ];
+            $total = $transaction->items->sum(fn ($item) => (float) $item->quantity * (float) $item->rate);
+            return ['transaction_no' => $transaction->transaction_no, 'date' => optional($transaction->transaction_date)->format('d/m/Y H:i'), 'direction' => $directions->map(fn ($value) => strtoupper($value))->implode(' / '), 'currency' => $currencies->implode(', '), 'total' => round($total, 2), 'status' => $transaction->status];
         });
-
-        return response()->json([
-            'customer' => [
-                'id' => $customerModel->id,
-                'name' => $customerModel->full_name,
-                'number' => $customerModel->customer_number,
-                'phone' => $customerModel->phone,
-            ],
-            'history' => $history,
-        ]);
+        return response()->json(['customer' => ['id' => $customerModel->id, 'name' => $customerModel->full_name, 'number' => $customerModel->customer_number, 'phone' => $customerModel->phone], 'history' => $history]);
     }
 
     public function store(Request $request, McTransactionService $transactionService)
     {
         $user = auth()->user();
-
         $validated = $request->validate([
             'customer_id' => ['required', 'string'],
             'transaction_date' => ['required', 'date'],
@@ -127,14 +92,14 @@ class TransactionController extends Controller
                 'fund_source_type' => $validated['fund_source_type'] ?? null,
                 'fund_source_detail' => $validated['fund_source_detail'] ?? null,
                 'transaction_purpose_type' => $validated['transaction_purpose_type'] ?? null,
+                'fund_source_detail' => $validated['fund_source_detail'] ?? null,
                 'transaction_purpose_detail' => $validated['transaction_purpose_detail'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
                 'items' => $validated['items'],
             ]);
-
-            return redirect()->route('teller.index')->with('success', 'Transaksi ' . $transaction->transaction_no . ' berhasil dibuat dan menunggu pembayaran.');
+            return redirect('/teller/transaction/' . $transaction->id . '/payment')->with('success', 'Transaksi ' . $transaction->transaction_no . ' berhasil dibuat dan menunggu pembayaran.');
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $e) {
