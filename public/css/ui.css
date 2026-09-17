@@ -118,91 +118,62 @@ table.ledger-table > :not(caption) > * > * { padding: 5px 7px; }
 
 table tbody tr td[colspan] { color: var(--ui-text-muted); }
 
-/* CUSTOMER MASTER — EXTRA COMPACT LEDGER */
-.customer-table {
-    border-collapse: collapse !important;
-}
-
-.customer-table th {
-    padding: 2px 6px !important;
-    line-height: 1 !important;
-    height: 24px !important;
-}
-
-.customer-table td {
-    padding: 1px 6px !important;
-    line-height: 1.05 !important;
-    height: 24px !important;
-}
-
-.customer-table tbody tr {
-    height: 24px !important;
-}
-
+.customer-table { border-collapse: collapse !important; }
+.customer-table th { padding: 2px 6px !important; line-height: 1 !important; height: 24px !important; }
+.customer-table td { padding: 1px 6px !important; line-height: 1.05 !important; height: 24px !important; }
+.customer-table tbody tr { height: 24px !important; }
 .customer-table .customer-name { line-height: 1.05 !important; }
-
 .customer-table .customer-badge,
-.customer-table .customer-risk-badge {
-    padding: 1px 5px !important;
-    min-height: 16px !important;
-    line-height: 1 !important;
-}
+.customer-table .customer-risk-badge { padding: 1px 5px !important; min-height: 16px !important; line-height: 1 !important; }
+.customer-table .customer-action-frame { min-height: 22px !important; height: 22px !important; padding: 0 2px !important; gap: 2px !important; }
+.customer-table .customer-action-btn { width: 20px !important; height: 20px !important; min-width: 20px !important; border-radius: 4px !important; }
+.customer-table .customer-action-btn svg { width: 11px !important; height: 11px !important; }
 
-.customer-table .customer-action-frame {
-    min-height: 22px !important;
-    height: 22px !important;
-    padding: 0 2px !important;
-    gap: 2px !important;
-}
-
-.customer-table .customer-action-btn {
-    width: 20px !important;
-    height: 20px !important;
-    min-width: 20px !important;
-    border-radius: 4px !important;
-}
-
-.customer-table .customer-action-btn svg {
-    width: 11px !important;
-    height: 11px !important;
-}
-
-/* TRANSAKSI BARU — 01 CUSTOMER: HORIZONTAL WORKSPACE */
-.trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
-    display: grid !important;
-    grid-template-columns: minmax(280px, 2.8fr) minmax(135px, 1fr) minmax(150px, 1.1fr) minmax(150px, 1.1fr);
+/* TRANSAKSI BARU — 01 CUSTOMER */
+.trx-page form .trx-section-head + .trx-section-body > .row {
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: flex-end !important;
     gap: 8px !important;
     margin: 0 !important;
 }
 
-.trx-page > form > .trx-paper:first-of-type .trx-section-body > .row > [class*="col-"] {
+.trx-page form .trx-section-head + .trx-section-body > .row > [class*="col-"] {
+    padding: 0 !important;
+    margin: 0 !important;
     width: auto !important;
     max-width: none !important;
-    flex: none !important;
-    padding: 0 !important;
+    flex: 0 0 auto !important;
 }
 
-.trx-page > form > .trx-paper:first-of-type .customer-meta {
-    min-height: 15px;
+.trx-page form .trx-section-head + .trx-section-body > .row > [class*="col-lg-6"] {
+    flex: 1 1 auto !important;
+    min-width: 320px !important;
+}
+
+.trx-page form .trx-section-head + .trx-section-body > .row > [class*="col-lg-2"] {
+    flex: 0 0 170px !important;
+}
+
+.trx-page form .trx-section-head + .trx-section-body > .row .customer-meta {
+    min-height: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-@media (max-width: 1050px) and (min-width: 901px) {
-    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
-        grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(120px, 1fr));
-    }
-}
-
 @media (max-width: 900px) {
-    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
+    .trx-page form .trx-section-head + .trx-section-body > .row {
+        flex-wrap: wrap !important;
     }
 
-    .trx-page > form > .trx-paper:first-of-type .trx-section-body > .row > [class*="col-"]:first-child {
-        grid-column: 1 / -1;
+    .trx-page form .trx-section-head + .trx-section-body > .row > [class*="col-lg-6"] {
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+
+    .trx-page form .trx-section-head + .trx-section-body > .row > [class*="col-lg-2"] {
+        flex: 1 1 180px !important;
     }
 }
 
