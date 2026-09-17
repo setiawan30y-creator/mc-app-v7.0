@@ -85,7 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
         calculateBalance();
     });
 
-    // Observe only direct row additions. Do not observe nested button mutations.
+    const addItemButton = document.getElementById('addItem');
+    addItemButton?.addEventListener('click', () => {
+        setTimeout(() => {
+            ensureDirectionButtons();
+            calculateBalance();
+        }, 0);
+    });
+
     const observer = new MutationObserver(mutations => {
         if (mutations.some(m => m.addedNodes.length || m.removedNodes.length)) {
             ensureDirectionButtons();
