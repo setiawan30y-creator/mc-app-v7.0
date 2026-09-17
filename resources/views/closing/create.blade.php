@@ -12,35 +12,57 @@
     .closing-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid #dfe7e2;background:#fafcfb}
     .closing-section-title{font-size:12px;font-weight:700;margin:0}
     .closing-section-note{font-size:10px;color:#7b8681;margin-top:2px}
-    .closing-section-body{padding:12px}
+    .closing-section-body{padding:10px 12px}
     .closing-form-page .form-label{font-size:10px;font-weight:600;color:#66726c;margin-bottom:3px}
-    .closing-form-page .form-control,.closing-form-page .form-select{font-size:12px;min-height:31px;padding:4px 8px}
-    .closing-form-page textarea.form-control{min-height:auto}
-    .closing-table{font-size:11px;margin:0!important}
+    .closing-form-page .form-control,.closing-form-page .form-select{font-size:12px;min-height:31px;height:31px;padding:4px 8px}
+    .closing-form-page textarea.form-control{min-height:auto;height:auto}
+
+    /* 01 - horizontal */
+    .closing-info-grid{display:grid;grid-template-columns:1.05fr .8fr 1.25fr .65fr;gap:8px;align-items:end}
+    .closing-info-field{min-width:0}
+
+    /* 02 - ledger pecahan */
+    .closing-table-wrap{overflow-x:auto}
+    .closing-table{font-size:11px;margin:0!important;width:100%}
     .closing-table th{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#68746e;background:#f4f7f5!important;white-space:nowrap;padding:5px 7px!important}
     .closing-table td{padding:4px 7px!important;line-height:1.2;vertical-align:middle}
-    .closing-table .qty{width:120px}
+    .closing-table .qty{width:125px;min-width:125px}
     .closing-table .qty input{text-align:right}
     .closing-table .money{font-variant-numeric:tabular-nums;white-space:nowrap}
+    .closing-table .denomination-label{font-weight:700;white-space:nowrap}
+    .closing-table .type{font-size:9px;color:#6f7b75;text-transform:uppercase;letter-spacing:.03em}
     .closing-total{font-size:12px;font-weight:700;white-space:nowrap}
+    .closing-empty{padding:22px 10px!important;color:#87928d}
+
     .closing-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
     .closing-summary-item{border:1px solid #dfe7e2;border-radius:6px;padding:9px 10px;background:#fff;min-height:64px}
     .closing-summary-label{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#78837e}
     .closing-summary-value{font-size:15px;font-weight:700;line-height:1.2;margin-top:4px}
     .closing-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:4px}
     .closing-actions .btn{font-size:11px;padding:6px 10px}
-    @media(max-width:900px){.closing-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+    @media(max-width:900px){
+        .closing-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .closing-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
     @media(max-width:768px){
         .closing-form-page{padding:12px}
         .closing-head{align-items:flex-start}
         .closing-title{font-size:18px}
         .closing-head .closing-btn{white-space:nowrap}
-        .closing-summary{grid-template-columns:1fr 1fr}
         .closing-section-body{padding:9px}
-        .closing-table{min-width:700px}
-        .closing-table-wrap{overflow-x:auto}
+        .closing-info-grid{grid-template-columns:repeat(2,minmax(170px,1fr));min-width:350px}
+        .closing-info-scroll{overflow-x:auto}
+        .closing-summary{grid-template-columns:1fr 1fr}
+        .closing-table{min-width:760px}
     }
-    @media(max-width:520px){.closing-summary{grid-template-columns:1fr}.closing-head{flex-direction:column}.closing-head .closing-btn{width:100%}.closing-actions{flex-direction:column}.closing-actions .btn{width:100%}}
+    @media(max-width:520px){
+        .closing-summary{grid-template-columns:1fr}
+        .closing-head{flex-direction:column}
+        .closing-head .closing-btn{width:100%}
+        .closing-actions{flex-direction:column}
+        .closing-actions .btn{width:100%}
+    }
 </style>
 
 <div class="container-fluid closing-form-page">
@@ -65,37 +87,66 @@
         @csrf
 
         <section class="closing-section">
-            <div class="closing-section-head"><div><h2 class="closing-section-title">01 · Informasi Closing</h2><div class="closing-section-note">Tentukan tanggal bisnis, shift, dan jenis closing.</div></div></div>
-            <div class="closing-section-body">
-                <div class="row g-2">
-                    <div class="col-md-3"><label class="form-label">Tanggal Bisnis</label><input type="date" name="business_date" value="{{ old('business_date', $businessDate) }}" class="form-control" required></div>
-                    <div class="col-md-3"><label class="form-label">Shift</label><select name="shift" class="form-select" required><option value="morning" @selected(old('shift', $shift) === 'morning')>Pagi</option><option value="afternoon" @selected(old('shift', $shift) === 'afternoon')>Sore</option></select></div>
-                    <div class="col-md-3"><label class="form-label">Jenis Closing</label><select name="closing_type" class="form-select" required><option value="shift_handover" @selected(old('closing_type') === 'shift_handover')>Shift / Handover</option><option value="end_of_day" @selected(old('closing_type') === 'end_of_day')>End of Day / Tutup Toko</option></select></div>
-                    <div class="col-md-3"><label class="form-label">Status</label><input type="text" value="DRAFT" class="form-control" readonly></div>
+            <div class="closing-section-head">
+                <div>
+                    <h2 class="closing-section-title">01 · Informasi Closing</h2>
+                    <div class="closing-section-note">Semua informasi utama closing dalam satu baris.</div>
+                </div>
+            </div>
+            <div class="closing-section-body closing-info-scroll">
+                <div class="closing-info-grid">
+                    <div class="closing-info-field">
+                        <label class="form-label">Tanggal Bisnis</label>
+                        <input type="date" name="business_date" value="{{ old('business_date', $businessDate) }}" class="form-control" required>
+                    </div>
+                    <div class="closing-info-field">
+                        <label class="form-label">Shift</label>
+                        <select name="shift" class="form-select" required>
+                            <option value="morning" @selected(old('shift', $shift) === 'morning')>Pagi</option>
+                            <option value="afternoon" @selected(old('shift', $shift) === 'afternoon')>Sore</option>
+                        </select>
+                    </div>
+                    <div class="closing-info-field">
+                        <label class="form-label">Jenis Closing</label>
+                        <select name="closing_type" class="form-select" required>
+                            <option value="shift_handover" @selected(old('closing_type', 'shift_handover') === 'shift_handover')>Shift / Handover</option>
+                            <option value="end_of_day" @selected(old('closing_type') === 'end_of_day')>End of Day / Tutup Toko</option>
+                        </select>
+                    </div>
+                    <div class="closing-info-field">
+                        <label class="form-label">Status</label>
+                        <input type="text" value="DRAFT" class="form-control" readonly>
+                    </div>
                 </div>
             </div>
         </section>
 
         <section class="closing-section">
             <div class="closing-section-head">
-                <div><h2 class="closing-section-title">02 · Kas Fisik & Pecahan</h2><div class="closing-section-note">Masukkan jumlah lembar/keping yang benar-benar ada di kas.</div></div>
+                <div>
+                    <h2 class="closing-section-title">02 · Kas Fisik & Pecahan</h2>
+                    <div class="closing-section-note">Masukkan jumlah lembar/keping yang benar-benar ada di kas.</div>
+                </div>
                 <div class="closing-total">Total Fisik: <span id="physical-total">Rp 0</span></div>
             </div>
             <div class="closing-table-wrap">
                 <table class="table closing-table align-middle">
-                    <thead><tr><th>Mata Uang</th><th>Series</th><th>Jenis</th><th class="text-end">Pecahan</th><th class="text-end qty">Qty Fisik</th><th class="text-end">Total</th></tr></thead>
+                    <thead>
+                        <tr><th>No</th><th>Mata Uang</th><th>Series</th><th>Jenis</th><th class="text-end">Pecahan</th><th class="text-end qty">Qty Fisik</th><th class="text-end">Total</th></tr>
+                    </thead>
                     <tbody>
-                    @forelse($denominations as $denomination)
+                    @forelse($denominations as $index => $denomination)
                         <tr>
-                            <td>{{ $denomination->variant->currency->code ?? '-' }}</td>
+                            <td class="text-muted">{{ $index + 1 }}</td>
+                            <td><strong>{{ $denomination->variant->currency->code ?? 'IDR' }}</strong></td>
                             <td>{{ $denomination->variant->name ?? '-' }}</td>
-                            <td>{{ $denomination->type_label }}</td>
-                            <td class="text-end">{{ $denomination->display_label }}</td>
+                            <td class="type">{{ $denomination->type_label }}</td>
+                            <td class="text-end denomination-label">{{ $denomination->display_label }}</td>
                             <td class="qty"><input type="number" min="0" step="1" name="physical_quantity[{{ $denomination->id }}]" value="{{ old('physical_quantity.' . $denomination->id, 0) }}" class="form-control form-control-sm denomination-qty" data-value="{{ $denomination->value }}"></td>
                             <td class="text-end money denomination-total">Rp 0</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted py-4">Belum ada master pecahan aktif.</td></tr>
+                        <tr><td colspan="7" class="text-center closing-empty">Belum ada master pecahan IDR aktif. Jalankan seeder pecahan IDR atau tambahkan pecahan melalui Master Denomination.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
