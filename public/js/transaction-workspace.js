@@ -12,14 +12,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-balance{border-color:#cbd8d1}
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
-        .direction-switch{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-        .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:7px 14px;font-size:10px;font-weight:700;cursor:pointer;min-width:76px}
-        .direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-        .trx-direction-note{width:100%;font-size:9px;color:#7a8580;margin-top:1px}
+        .direction-switch{display:none!important}
         .trx-row-direction-wrap{display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
         .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
         .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-        .trx-row-direction{display:none!important}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -31,38 +27,30 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(style);
 
-    const switchBox = page.querySelector('.direction-switch');
-    let globalDirection = 'buy';
+    const getRows = () => Array.from(itemRows.querySelectorAll('tr'));
 
-    function renderDirectionSwitch() {
-        if (!switchBox) return;
-        switchBox.innerHTML = `
-            <button type="button" class="direction-btn active" data-direction-mode="buy">BELI</button>
-            <button type="button" class="direction-btn" data-direction-mode="sell">JUAL</button>
-            <button type="button" class="direction-btn" data-direction-mode="mixed">BELI / JUAL</button>
-            <div class="trx-direction-note">BELI/JUAL mengaktifkan pilihan arah pada setiap baris item.</div>
-        `;
-        switchBox.querySelectorAll('[data-direction-mode]').forEach(button => {
-            button.addEventListener('click', () => {
-                switchBox.querySelectorAll('[data-direction-mode]').forEach(b => b.classList.remove('active'));
-                button.classList.add('active');
-                globalDirection = button.dataset.directionMode;
-                applyDirectionMode();
-                calculateBalance();
-            });
-        });
+    function getDirection(tr) {
+        return tr.querySelector('.direction-input')?.value === 'sell' ? 'sell' : 'buy';
     }
 
-    renderDirectionSwitch();
+    function setDirection(tr, direction) {
+        const hidden = tr.querySelector('.direction-input');
+        if (!hidden) return;
+        hidden.value = direction;
+        hidden.disabled = false;
+        const wrap = tr.querySelector('.trx-row-direction-wrap');
+        wrap?.querySelectorAll('[data-row-direction]').forEach(button => {
+            button.classList.toggle('active', button.dataset.rowDirection === direction);
+        });
+        if (typeof refreshRate === 'function') refreshRate(tr);
+    }
 
-    function ensureRowDirectionUI(tr) {
-        const hidden = tr?.querySelector('.direction-input');
+    function ensureRowButtons(tr) {
+        const hidden = tr.querySelector('.direction-input');
         const cell = hidden?.closest('td');
         if (!hidden || !cell) return;
 
-        const select = cell.querySelector('.trx-row-direction');
-        if (select) select.style.display = 'none';
-
+        cell.querySelector('.trx-row-direction')?.remove();
         let wrap = cell.querySelector('.trx-row-direction-wrap');
         if (!wrap) {
             wrap = document.createElement('div');
@@ -73,54 +61,32 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             cell.appendChild(wrap);
         }
-
-        wrap.querySelectorAll('[data-row-direction]').forEach(button => {
-            button.classList.toggle('active', button.dataset.rowDirection === (hidden.value === 'sell' ? 'sell' : 'buy'));
-        });
+        setDirection(tr, getDirection(tr));
     }
 
-    function removeRowDirectionUI(tr) {
-        tr?.querySelector('.trx-row-direction-wrap')?.remove();
-    }
-
-    function applyDirectionMode() {
-        itemRows.querySelectorAll('tr').forEach(tr => {
-            const hidden = tr.querySelector('.direction-input');
-            if (!hidden) return;
-
-            hidden.disabled = false;
-            if (globalDirection === 'mixed') {
-                ensureRowDirectionUI(tr);
-            } else {
-                hidden.value = globalDirection;
-                removeRowDirectionUI(tr);
-            }
-
-            if (typeof refreshRate === 'function') refreshRate(tr);
-        });
+    // 02 is now intentionally controlled only per item row.
+    // The old global BELI/JUAL/BELI-JUAL switch is hidden to avoid duplicated controls.
+    function applyItemDirectionUI() {
+        getRows().forEach(tr => ensureRowButtons(tr));
     }
 
     itemRows.addEventListener('click', event => {
         const button = event.target.closest('[data-row-direction]');
         if (!button) return;
         const tr = button.closest('tr');
-        const hidden = tr?.querySelector('.direction-input');
-        if (!tr || !hidden || globalDirection !== 'mixed') return;
-        hidden.value = button.dataset.rowDirection;
-        ensureRowDirectionUI(tr);
-        if (typeof refreshRate === 'function') refreshRate(tr);
+        if (!tr) return;
+        setDirection(tr, button.dataset.rowDirection);
         calculateBalance();
     });
 
     const observer = new MutationObserver(mutations => {
-        let changed = false;
-        mutations.forEach(mutation => {
-            if (mutation.addedNodes.length) changed = true;
-        });
-        if (changed) applyDirectionMode();
+        if (mutations.some(m => m.addedNodes.length || m.removedNodes.length)) {
+            applyItemDirectionUI();
+            calculateBalance();
+        }
     });
     observer.observe(itemRows, {childList:true});
-    applyDirectionMode();
+    applyItemDirectionUI();
 
     summary.innerHTML = `
         <div class="trx-summary-box">
@@ -153,11 +119,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function calculateBalance() {
         let sell = 0, buy = 0;
         let itemCount = 0, qtyTotal = 0;
-        itemRows.querySelectorAll('tr').forEach(tr => {
+        getRows().forEach(tr => {
             const qty = Number(tr.querySelector('.qty-input')?.value) || 0;
             const rate = Number(tr.querySelector('.rate-input')?.value) || 0;
             const subtotal = qty * rate;
-            const direction = tr.querySelector('.direction-input')?.value || 'buy';
+            const direction = getDirection(tr);
             if (tr.querySelector('.currency-input, select[name*="currency_id"]')) itemCount++;
             qtyTotal += qty;
             if (direction === 'sell') sell += subtotal;
@@ -181,22 +147,19 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('summaryDifferenceNote').textContent = 'Dibayarkan kepada customer';
             document.getElementById('summarySettlementLabel').textContent = 'Customer Terima';
             document.getElementById('summarySettlement').textContent = moneySafe(diff);
-            differenceBox.classList.add('is-positive');
-            settlementBox.classList.add('is-positive');
+            differenceBox.classList.add('is-positive'); settlementBox.classList.add('is-positive');
         } else if (diff < 0) {
             document.getElementById('summaryDifferenceLabel').textContent = 'Tambah Rp';
             document.getElementById('summaryDifferenceNote').textContent = 'Dibayarkan oleh customer';
             document.getElementById('summarySettlementLabel').textContent = 'Customer Bayar';
             document.getElementById('summarySettlement').textContent = moneySafe(absDiff);
-            differenceBox.classList.add('is-negative');
-            settlementBox.classList.add('is-negative');
+            differenceBox.classList.add('is-negative'); settlementBox.classList.add('is-negative');
         } else {
             document.getElementById('summaryDifferenceLabel').textContent = 'Selisih Rp';
             document.getElementById('summaryDifferenceNote').textContent = 'Tidak ada selisih';
             document.getElementById('summarySettlementLabel').textContent = 'Status';
             document.getElementById('summarySettlement').textContent = 'PAS';
-            differenceBox.classList.add('is-balance');
-            settlementBox.classList.add('is-balance');
+            differenceBox.classList.add('is-balance'); settlementBox.classList.add('is-balance');
         }
 
         const hiddenDifference = document.getElementById('calculatedDifference');
@@ -216,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = page.querySelector(`[name="${name}"]`);
         return input?.closest('.payment-field');
     }
-
     const cashField = fieldByName('cash_amount');
     const transferField = fieldByName('transfer_amount');
 
@@ -225,19 +187,10 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentMethods.forEach(btn => btn.classList.toggle('active', btn.dataset.method === method));
         if (!paymentFields) return;
         paymentFields.classList.toggle('split-mode', method === 'split');
-        const allFields = paymentFields.querySelectorAll('.payment-field');
-        allFields.forEach(field => field.classList.remove('show'));
-        if (method === 'cash') {
-            cashField?.classList.add('show');
-        } else if (method === 'transfer') {
-            transferField?.classList.add('show');
-            bankField?.classList.add('show');
-        } else if (method === 'split') {
-            cashField?.classList.add('show');
-            transferField?.classList.add('show');
-            bankField?.classList.add('show');
-            ensureSplitDecorations();
-        }
+        paymentFields.querySelectorAll('.payment-field').forEach(field => field.classList.remove('show'));
+        if (method === 'cash') cashField?.classList.add('show');
+        if (method === 'transfer') { transferField?.classList.add('show'); bankField?.classList.add('show'); }
+        if (method === 'split') { cashField?.classList.add('show'); transferField?.classList.add('show'); bankField?.classList.add('show'); ensureSplitDecorations(); }
     }
 
     function ensureSplitDecorations() {
@@ -266,16 +219,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalEl = balance.querySelector('#splitPaidTotal');
             if (totalEl) totalEl.textContent = moneySafe(total);
             const ok = method === 'split' ? Math.abs(total-required) < 0.01 : true;
-            balance.classList.toggle('ok', ok);
-            balance.classList.toggle('bad', !ok);
+            balance.classList.toggle('ok', ok); balance.classList.toggle('bad', !ok);
         }
         if (paymentError) {
             if (method === 'split' && required > 0 && Math.abs(total-required) >= 0.01) {
                 paymentError.textContent = `Cash + Transfer harus sama dengan ${moneySafe(required)}.`;
                 paymentError.style.display = 'block';
-            } else {
-                paymentError.style.display = 'none';
-            }
+            } else paymentError.style.display = 'none';
         }
     }
 
@@ -283,72 +233,42 @@ document.addEventListener('DOMContentLoaded', () => {
         if (paymentMethodInput) paymentMethodInput.value = method;
         updateSplitLayout();
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
-        if (method === 'cash') {
-            if (cashInput) cashInput.value = required.toFixed(2);
-            if (transferInput) transferInput.value = '';
-        } else if (method === 'transfer') {
-            if (transferInput) transferInput.value = required.toFixed(2);
-            if (cashInput) cashInput.value = '';
-        } else if (method === 'split') {
-            const cash = Number(cashInput?.value)||0;
-            const transfer = Number(transferInput?.value)||0;
+        if (method === 'cash') { if (cashInput) cashInput.value = required.toFixed(2); if (transferInput) transferInput.value = ''; }
+        else if (method === 'transfer') { if (transferInput) transferInput.value = required.toFixed(2); if (cashInput) cashInput.value = ''; }
+        else if (method === 'split') {
+            const cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0;
             if (cash === 0 && transfer === 0 && cashInput) cashInput.value = required.toFixed(2);
         }
         updatePaymentRequirement(required);
     }
 
-    paymentMethods.forEach(btn => {
-        btn.addEventListener('click', () => setPaymentMethod(btn.dataset.method));
-    });
+    paymentMethods.forEach(btn => btn.addEventListener('click', () => setPaymentMethod(btn.dataset.method)));
 
     function syncSplit(source) {
         if ((paymentMethodInput?.value || 'cash') !== 'split') return;
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
-        let cash = Number(cashInput?.value)||0;
-        let transfer = Number(transferInput?.value)||0;
-        if (source === 'cash') {
-            cash = Math.max(0, cash);
-            transfer = Math.max(0, required - cash);
-            if (transferInput) transferInput.value = transfer.toFixed(2);
-        } else {
-            transfer = Math.max(0, transfer);
-            cash = Math.max(0, required - transfer);
-            if (cashInput) cashInput.value = cash.toFixed(2);
-        }
+        let cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0;
+        if (source === 'cash') { cash = Math.max(0,cash); transfer = Math.max(0,required-cash); if (transferInput) transferInput.value = transfer.toFixed(2); }
+        else { transfer = Math.max(0,transfer); cash = Math.max(0,required-transfer); if (cashInput) cashInput.value = cash.toFixed(2); }
         updatePaymentRequirement(required);
     }
-
     cashInput?.addEventListener('input', () => syncSplit('cash'));
     transferInput?.addEventListener('input', () => syncSplit('transfer'));
 
     page.querySelector('#transactionForm')?.addEventListener('submit', event => {
         const method = paymentMethodInput?.value || 'cash';
         const required = Math.abs(Number(document.getElementById('calculatedDifference')?.value)||0);
-        const cash = Number(cashInput?.value)||0;
-        const transfer = Number(transferInput?.value)||0;
+        const cash = Number(cashInput?.value)||0, transfer = Number(transferInput?.value)||0;
         if (method === 'split' && required > 0 && Math.abs((cash + transfer) - required) >= 0.01) {
-            event.preventDefault();
-            updatePaymentRequirement(required);
-            paymentFields?.scrollIntoView({behavior:'smooth',block:'center'});
-            return;
+            event.preventDefault(); updatePaymentRequirement(required); paymentFields?.scrollIntoView({behavior:'smooth',block:'center'}); return;
         }
-        if (method === 'cash' && required > 0 && Math.abs(cash-required) >= 0.01) {
-            event.preventDefault();
-            if (cashInput) cashInput.value = required.toFixed(2);
-            updatePaymentRequirement(required);
-        }
-        if (method === 'transfer' && required > 0 && Math.abs(transfer-required) >= 0.01) {
-            event.preventDefault();
-            if (transferInput) transferInput.value = required.toFixed(2);
-            updatePaymentRequirement(required);
-        }
+        if (method === 'cash' && required > 0 && Math.abs(cash-required) >= 0.01) { event.preventDefault(); if (cashInput) cashInput.value = required.toFixed(2); updatePaymentRequirement(required); }
+        if (method === 'transfer' && required > 0 && Math.abs(transfer-required) >= 0.01) { event.preventDefault(); if (transferInput) transferInput.value = required.toFixed(2); updatePaymentRequirement(required); }
     });
 
     updateSplitLayout();
     setPaymentMethod(paymentMethodInput?.value || 'cash');
     itemRows.addEventListener('input', calculateBalance);
     itemRows.addEventListener('change', calculateBalance);
-    const addButton = document.getElementById('addItem');
-    addButton?.addEventListener('click', () => setTimeout(() => { applyDirectionMode(); calculateBalance(); }, 0));
     calculateBalance();
 });
