@@ -12,13 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
         .trx-summary-box.is-balance{border-color:#cbd8d1}
         .trx-summary-box.is-positive{background:#f7fbf9}
         .trx-summary-box.is-negative{background:#fff9f7}
-        .trx-row-direction-wrap{display:flex;gap:4px;align-items:center;white-space:nowrap}
-        .trx-row-direction-btn{border:1px solid #d1dbd6;background:#fff;color:#66736c;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
-        .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
-        .trx-direction-note{font-size:9px;margin-top:3px;color:#7a8580}
-        .direction-switch{display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap}
-        .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:6px 13px;font-size:10px;font-weight:700;cursor:pointer}
+        .direction-switch{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+        .direction-btn{border:1px solid #cfd9d4;background:#fff;color:#526059;border-radius:5px;padding:7px 14px;font-size:10px;font-weight:700;cursor:pointer;min-width:76px}
         .direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        .trx-direction-note{width:100%;font-size:9px;color:#7a8580;margin-top:1px}
+        .trx-row-direction-wrap{display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
+        .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 7px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
+        .trx-row-direction-btn.active{background:#26352e;color:#fff;border-color:#26352e}
+        .trx-row-direction{display:none!important}
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -33,14 +34,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const switchBox = page.querySelector('.direction-switch');
     let globalDirection = 'buy';
 
-    if (switchBox) {
+    function renderDirectionSwitch() {
+        if (!switchBox) return;
         switchBox.innerHTML = `
             <button type="button" class="direction-btn active" data-direction-mode="buy">BELI</button>
             <button type="button" class="direction-btn" data-direction-mode="sell">JUAL</button>
-            <button type="button" class="direction-btn" data-direction-mode="mixed">BELI/JUAL</button>
-            <div class="trx-direction-note">Pilih BELI/JUAL untuk seluruh item, atau BELI/JUAL agar arah tiap baris fleksibel.</div>
+            <button type="button" class="direction-btn" data-direction-mode="mixed">BELI / JUAL</button>
+            <div class="trx-direction-note">BELI/JUAL mengaktifkan pilihan arah pada setiap baris item.</div>
         `;
-
         switchBox.querySelectorAll('[data-direction-mode]').forEach(button => {
             button.addEventListener('click', () => {
                 switchBox.querySelectorAll('[data-direction-mode]').forEach(b => b.classList.remove('active'));
@@ -52,51 +53,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addDirectionControls(tr) {
-        if (!tr) return;
-        const hidden = tr.querySelector('.direction-input');
+    renderDirectionSwitch();
+
+    function ensureRowDirectionUI(tr) {
+        const hidden = tr?.querySelector('.direction-input');
         const cell = hidden?.closest('td');
         if (!hidden || !cell) return;
 
-        const oldSelect = cell.querySelector('.trx-row-direction');
-        if (oldSelect) oldSelect.remove();
+        const select = cell.querySelector('.trx-row-direction');
+        if (select) select.style.display = 'none';
 
         let wrap = cell.querySelector('.trx-row-direction-wrap');
         if (!wrap) {
             wrap = document.createElement('div');
             wrap.className = 'trx-row-direction-wrap';
-            const buyBtn = document.createElement('button');
-            buyBtn.type = 'button';
-            buyBtn.className = 'trx-row-direction-btn';
-            buyBtn.dataset.rowDirection = 'buy';
-            buyBtn.textContent = 'BELI';
-            const sellBtn = document.createElement('button');
-            sellBtn.type = 'button';
-            sellBtn.className = 'trx-row-direction-btn';
-            sellBtn.dataset.rowDirection = 'sell';
-            sellBtn.textContent = 'JUAL';
-            wrap.append(buyBtn, sellBtn);
+            wrap.innerHTML = `
+                <button type="button" class="trx-row-direction-btn" data-row-direction="buy">BELI</button>
+                <button type="button" class="trx-row-direction-btn" data-row-direction="sell">JUAL</button>
+            `;
             cell.appendChild(wrap);
-
-            wrap.querySelectorAll('[data-row-direction]').forEach(button => {
-                button.addEventListener('click', () => {
-                    hidden.value = button.dataset.rowDirection;
-                    updateRowDirectionButtons(tr, hidden.value);
-                    if (typeof refreshRate === 'function') refreshRate(tr);
-                    calculateBalance();
-                });
-            });
         }
 
-        updateRowDirectionButtons(tr, hidden.value === 'sell' ? 'sell' : 'buy');
+        wrap.querySelectorAll('[data-row-direction]').forEach(button => {
+            button.classList.toggle('active', button.dataset.rowDirection === (hidden.value === 'sell' ? 'sell' : 'buy'));
+        });
     }
 
-    function updateRowDirectionButtons(tr, direction) {
-        const wrap = tr.querySelector('.trx-row-direction-wrap');
-        if (!wrap) return;
-        wrap.querySelectorAll('[data-row-direction]').forEach(button => {
-            button.classList.toggle('active', button.dataset.rowDirection === direction);
-        });
+    function removeRowDirectionUI(tr) {
+        tr?.querySelector('.trx-row-direction-wrap')?.remove();
     }
 
     function applyDirectionMode() {
@@ -104,30 +88,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const hidden = tr.querySelector('.direction-input');
             if (!hidden) return;
 
+            hidden.disabled = false;
             if (globalDirection === 'mixed') {
-                addDirectionControls(tr);
-                hidden.disabled = false;
-                updateRowDirectionButtons(tr, hidden.value === 'sell' ? 'sell' : 'buy');
+                ensureRowDirectionUI(tr);
             } else {
                 hidden.value = globalDirection;
-                hidden.disabled = false;
-                tr.querySelector('.trx-row-direction-wrap')?.remove();
+                removeRowDirectionUI(tr);
             }
 
             if (typeof refreshRate === 'function') refreshRate(tr);
         });
     }
 
-    function transformRows() {
-        itemRows.querySelectorAll('tr').forEach(tr => {
-            if (globalDirection === 'mixed') addDirectionControls(tr);
-        });
-        applyDirectionMode();
-    }
+    itemRows.addEventListener('click', event => {
+        const button = event.target.closest('[data-row-direction]');
+        if (!button) return;
+        const tr = button.closest('tr');
+        const hidden = tr?.querySelector('.direction-input');
+        if (!tr || !hidden || globalDirection !== 'mixed') return;
+        hidden.value = button.dataset.rowDirection;
+        ensureRowDirectionUI(tr);
+        if (typeof refreshRate === 'function') refreshRate(tr);
+        calculateBalance();
+    });
 
-    const observer = new MutationObserver(() => transformRows());
+    const observer = new MutationObserver(mutations => {
+        let changed = false;
+        mutations.forEach(mutation => {
+            if (mutation.addedNodes.length) changed = true;
+        });
+        if (changed) applyDirectionMode();
+    });
     observer.observe(itemRows, {childList:true});
-    transformRows();
+    applyDirectionMode();
 
     summary.innerHTML = `
         <div class="trx-summary-box">
@@ -356,6 +349,6 @@ document.addEventListener('DOMContentLoaded', () => {
     itemRows.addEventListener('input', calculateBalance);
     itemRows.addEventListener('change', calculateBalance);
     const addButton = document.getElementById('addItem');
-    addButton?.addEventListener('click', () => setTimeout(() => { transformRows(); calculateBalance(); }, 0));
+    addButton?.addEventListener('click', () => setTimeout(() => { applyDirectionMode(); calculateBalance(); }, 0));
     calculateBalance();
 });
