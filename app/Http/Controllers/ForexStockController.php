@@ -7,7 +7,6 @@ use App\Models\CurrencyDenomination;
 use App\Models\ForexStock;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class ForexStockController extends Controller
 {
@@ -32,6 +31,21 @@ class ForexStockController extends Controller
             ->ordered()
             ->get();
 
+        $currencyVariants = $currencies->flatMap(function ($currency) {
+            return $currency->variants->map(function ($variant) {
+                return [
+                    'id' => $variant->id,
+                    'denominations' => $variant->denominations->map(function ($denomination) {
+                        return [
+                            'id' => $denomination->id,
+                            'label' => $denomination->display_label,
+                            'type' => $denomination->type_label,
+                        ];
+                    })->values()->all(),
+                ];
+            });
+        })->values()->all();
+
         $summary = [
             'currencies' => $stocks->pluck('variant.currency.code')->filter()->unique()->count(),
             'denominations' => $stocks->count(),
@@ -39,7 +53,7 @@ class ForexStockController extends Controller
             'value' => (float) $stocks->sum(fn ($stock) => ((float) $stock->quantity) * ((float) $stock->denomination->value)),
         ];
 
-        return view('forex-stocks.index', compact('stocks', 'currencies', 'summary', 'date'));
+        return view('forex-stocks.index', compact('stocks', 'currencies', 'currencyVariants', 'summary', 'date'));
     }
 
     public function upsert(Request $request)
