@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Currency;
+use App\Models\CurrencyDenomination;
 use App\Models\ForexStock;
 use App\Models\McTransactionItem;
+use App\Models\OpeningBalance;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -17,61 +18,87 @@ class ForexStockController extends Controller
         $branchId = $user->branch_id;
         $date = $request->date('date')?->toDateString() ?? Carbon::today()->toDateString();
         $day = Carbon::parse($date)->startOfDay();
-        $previousDate = $day->copy()->subDay()->toDateString();
 
-        // Stok awal diambil dari saldo stok terakhir yang tersimpan sebelum tanggal laporan.
-        $openingStocks = ForexStock::query()
+        // Saldo awal resmi menjadi baseline pertama stok. Setelah itu,
+        // snapshot forex_stocks (jika ada) tetap menjadi sumber opening harian.
+        $snapshot = ForexStock::query()
             ->with(['variant.currency', 'denomination'])
             ->where('tenant_id', $tenantId)
             ->where('branch_id', $branchId)
-            ->whereDate('stock_date', $previousDate)
+            ->whereDate('stock_date', $day->copy()->subDay()->toDateString())
             ->get()
             ->keyBy('currency_denomination_id');
 
-        // Pembelian/penjualan normal berasal dari item transaksi yang sudah dibayar.
-        $items = McTransactionItem::query()
-            ->with(['currency', 'currencyVariant', 'currencyDenomination'])
-            ->whereHas('transaction', function ($query) use ($tenantId, $branchId, $day) {
-                $query->where('tenant_id', $tenantId)
-                    ->where('branch_id', $branchId)
-                    ->whereDate('transaction_date', $day->toDateString())
-                    ->whereIn('status', ['paid', 'completed']);
-            })
+        $openingBalances = OpeningBalance::query()
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->where('balance_type', 'forex')
+            ->whereDate('balance_date', '<=', $date)
+            ->where('status', 'finalized')
+            ->with(['variant.currency', 'denomination'])
+            ->orderByDesc('balance_date')
             ->get();
 
+        $openingByDenomination = $openingBalances
+            ->groupBy('currency_denomination_id')
+            ->map(fn ($items) => $items->first());
+
+        $baselineDate = $openingBalances->max('balance_date');
+        $transactionQuery = McTransactionItem::query()
+            ->with(['currency', 'currencyVariant', 'currencyDenomination'])
+            ->whereHas('transaction', function ($query) use ($tenantId, $branchId, $day, $baselineDate) {
+                $query->where('tenant_id', $tenantId)
+                    ->where('branch_id', $branchId)
+                    ->whereIn('status', ['paid', 'completed'])
+                    ->when($baselineDate, fn ($q) => $q->whereDate('transaction_date', '>=', Carbon::parse($baselineDate)->toDateString()))
+                    ->whereDate('transaction_date', '<=', $day->toDateString());
+            });
+        $items = $transactionQuery->get();
         $movements = $items->groupBy('currency_denomination_id');
-        $denominationIds = $openingStocks->keys()->merge($movements->keys())->filter()->unique();
+
+        $denominationIds = $snapshot->keys()
+            ->merge($openingByDenomination->keys())
+            ->merge($movements->keys())
+            ->filter()->unique();
 
         $denominations = $denominationIds->isNotEmpty()
-            ? \App\Models\CurrencyDenomination::query()
-                ->with(['variant.currency'])
-                ->whereIn('id', $denominationIds)
-                ->get()
-                ->keyBy('id')
+            ? CurrencyDenomination::query()->with(['variant.currency'])->whereIn('id', $denominationIds)->get()->keyBy('id')
             : collect();
 
-        $rows = $denominationIds->map(function ($denominationId) use ($openingStocks, $movements, $denominations) {
+        $rows = $denominationIds->map(function ($denominationId) use ($snapshot, $openingByDenomination, $movements, $denominations, $day, $baselineDate) {
             $denomination = $denominations->get($denominationId);
-            $opening = $openingStocks->get($denominationId);
-            $dayItems = $movements->get($denominationId, collect());
+            $openingBalance = $openingByDenomination->get($denominationId);
+            $stockSnapshot = $snapshot->get($denominationId);
+            $allItems = $movements->get($denominationId, collect());
+            $dayItems = $allItems->filter(fn ($item) => Carbon::parse($item->transaction?->transaction_date)->isSameDay($day));
+            $priorItems = $allItems->reject(fn ($item) => Carbon::parse($item->transaction?->transaction_date)->isSameDay($day));
+
+            $baselineQty = (float) ($openingBalance?->quantity ?? $stockSnapshot?->quantity ?? 0);
+            $baselineRp = (float) ($openingBalance?->amount_rp ?? 0);
+
+            // Bila ada snapshot kemarin, gunakan snapshot sebagai opening harian.
+            // Jika belum ada snapshot, bentuk opening dari saldo awal + transaksi sebelum hari laporan.
+            if ($stockSnapshot) {
+                $openingQty = (float) $stockSnapshot->quantity;
+                $openingRp = $baselineRp > 0 ? $baselineRp : null;
+            } else {
+                $priorPurchase = $priorItems->where('direction', 'buy');
+                $priorSales = $priorItems->where('direction', 'sell');
+                $openingQty = $baselineQty + (float) $priorPurchase->sum('quantity') - (float) $priorSales->sum('quantity');
+                $openingRp = $baselineRp + (float) $priorPurchase->sum('subtotal') - (float) $priorSales->sum('subtotal');
+                if ($openingRp == 0 && $openingQty == 0) $openingRp = null;
+            }
 
             $purchaseItems = $dayItems->where('direction', 'buy');
             $salesItems = $dayItems->where('direction', 'sell');
-
             $purchaseQty = (float) $purchaseItems->sum('quantity');
             $purchaseRp = (float) $purchaseItems->sum('subtotal');
             $salesQty = (float) $salesItems->sum('quantity');
             $salesRp = (float) $salesItems->sum('subtotal');
-            $openingQty = (float) ($opening?->quantity ?? 0);
 
             $purchaseRate = $purchaseQty > 0 ? $purchaseRp / $purchaseQty : null;
             $salesRate = $salesQty > 0 ? $salesRp / $salesQty : null;
-
-            // Nilai saldo mengikuti arus nominal transaksi. Cost opening belum disimpan
-            // pada tabel forex_stocks, sehingga kurs opening/ending akan ditampilkan
-            // bila cost basis tersedia dari saldo sebelumnya atau transaksi hari ini.
-            $openingRate = $purchaseRate ?? $salesRate;
-            $openingRp = $openingRate !== null ? $openingQty * $openingRate : null;
+            $openingRate = $openingQty != 0 && $openingRp !== null ? $openingRp / $openingQty : null;
             $endingQty = $openingQty + $purchaseQty - $salesQty;
             $endingRp = $openingRp !== null ? $openingRp + $purchaseRp - $salesRp : null;
             $endingRate = ($endingRp !== null && $endingQty != 0) ? $endingRp / $endingQty : null;
