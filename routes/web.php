@@ -13,6 +13,7 @@ use App\Http\Controllers\CustomerRiskMasterController;
 use App\Http\Controllers\RateController;
 use App\Http\Controllers\ForexStockController;
 use App\Http\Controllers\TenantSettingController;
+use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\ComplianceThresholdRuleController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransactionCustomerController;
@@ -31,18 +32,15 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::post('/teller/transaction/customer', [TransactionCustomerController::class, 'store'])->middleware('permission:customer.create')->name('transactions.customer-store');
     Route::get('/teller/transaction/customer/{customer}/history', [TransactionController::class, 'customerHistory'])->name('transactions.customer-history');
     Route::post('/teller/transaction', [TransactionController::class, 'store'])->name('transactions.store');
-
     Route::get('/closing', [CashClosingController::class, 'index'])->name('closing.index');
     Route::get('/closing/create', [CashClosingController::class, 'create'])->name('closing.create');
     Route::post('/closing', [CashClosingController::class, 'store'])->name('closing.store');
     Route::get('/closing/{closing}', [CashClosingController::class, 'show'])->name('closing.show');
-
     Route::get('/gantungan', [GantunganController::class, 'index'])->name('gantungan.index');
     Route::get('/gantungan/create', [GantunganController::class, 'create'])->name('gantungan.create');
     Route::post('/gantungan', [GantunganController::class, 'store'])->name('gantungan.store');
     Route::get('/gantungan/{gantungan}', [GantunganController::class, 'show'])->name('gantungan.show');
     Route::post('/gantungan/{gantungan}/settle', [GantunganController::class, 'settle'])->name('gantungan.settle');
-
     Route::get('/customers', [CustomerController::class, 'index'])->middleware('permission:customer.view')->name('customers.index');
     Route::get('/customers/create', [CustomerController::class, 'create'])->middleware('permission:customer.create')->name('customers.create');
     Route::post('/customers', [CustomerController::class, 'store'])->middleware('permission:customer.create')->name('customers.store');
@@ -53,9 +51,9 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/customers/{customer}/preview', [CustomerController::class, 'preview'])->middleware('permission:customer.view')->name('customers.preview');
     Route::get('/customers/{customer}/edit', [CustomerController::class, 'edit'])->middleware('permission:customer.update')->name('customers.edit');
     Route::put('/customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:customer.update')->name('customers.update');
-
     Route::get('/pengaturan/perusahaan', [TenantSettingController::class, 'edit'])->middleware('permission:settings.manage')->name('settings.company.edit');
     Route::put('/pengaturan/perusahaan', [TenantSettingController::class, 'update'])->middleware('permission:settings.manage')->name('settings.company.update');
+    Route::get('/pengaturan/tampilan-tema', [ThemeController::class, 'index'])->middleware('permission:settings.manage')->name('settings.theme.index');
     Route::get('/pengaturan/master-customer', [CustomerRiskMasterController::class, 'index'])->middleware('permission:settings.manage')->name('settings.customer-risk.index');
     Route::post('/pengaturan/master-customer', [CustomerRiskMasterController::class, 'store'])->middleware('permission:settings.manage')->name('settings.customer-risk.store');
     Route::put('/pengaturan/master-customer/{customerRiskMaster}', [CustomerRiskMasterController::class, 'update'])->middleware('permission:settings.manage')->name('settings.customer-risk.update');
@@ -98,10 +96,8 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::post('/pengaturan/compliance-threshold', [ComplianceThresholdRuleController::class, 'store'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.store');
     Route::put('/pengaturan/compliance-threshold/{complianceThresholdRule}', [ComplianceThresholdRuleController::class, 'update'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.update');
     Route::patch('/pengaturan/compliance-threshold/{complianceThresholdRule}/toggle', [ComplianceThresholdRuleController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.toggle');
-
     Route::get('/stok-valas', [ForexStockController::class, 'index'])->name('forex-stocks.index');
     Route::post('/stok-valas', [ForexStockController::class, 'upsert'])->middleware('permission:settings.manage')->name('forex-stocks.upsert');
-
     Route::get('/customers/import', [CustomerImportController::class, 'index'])->name('customers.import');
     Route::post('/customers/import/preview', [CustomerImportController::class, 'preview'])->name('customers.import.preview');
 });
