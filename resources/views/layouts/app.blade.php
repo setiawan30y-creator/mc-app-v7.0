@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'MC Almara')</title>
     <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
+    <script src="{{ asset('js/theme-settings.js') }}"></script>
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f5f7f6;--sidebar:#126b4f;--sidebar-dark:#0b503b;--sidebar-light:#16805e;--sidebar-soft:rgba(255,255,255,.09);--text:#0f172a;--muted:#64748b;--border:#e5e7eb;--card:#fff;--primary:#147957;--primary-light:#e7f5ef;--gold:#c7a968;--gold-light:#e0c47a;--success:#15803d;--danger:#b91c1c}
