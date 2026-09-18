@@ -14,10 +14,32 @@ document.addEventListener('DOMContentLoaded', () => {
         .direction-switch{display:none!important}
         .row-direction{display:none!important}
         .trx-row-direction-wrap{display:inline-flex!important;gap:4px;align-items:center;white-space:nowrap}
-        .trx-row-direction-btn{border:1px solid #cfd9d4;background:#fff;color:#59665f;border-radius:4px;padding:5px 8px;font-size:9px;font-weight:700;cursor:pointer;line-height:1}
-        .trx-row-direction-btn[data-row-direction="buy"].active{background:#198754!important;color:#fff!important;border-color:#198754!important}
-        .trx-row-direction-btn[data-row-direction="sell"].active{background:#dc3545!important;color:#fff!important;border-color:#dc3545!important}
-        .trx-row-direction-btn:not(.active){background:#fff!important;color:#59665f!important;border-color:#cfd9d4!important}
+        .trx-row-direction-btn{
+            border:1px solid #cfd9d4;
+            background:#fff!important;
+            color:#59665f!important;
+            border-radius:4px;
+            padding:5px 8px;
+            font-size:9px;
+            font-weight:700;
+            cursor:pointer;
+            line-height:1;
+        }
+        .trx-row-direction-btn[data-row-direction="buy"].active{
+            background:#198754!important;
+            color:#fff!important;
+            border-color:#198754!important;
+        }
+        .trx-row-direction-btn[data-row-direction="sell"].active{
+            background:#dc3545!important;
+            color:#fff!important;
+            border-color:#dc3545!important;
+        }
+        .trx-row-direction-btn:not(.active){
+            background:#fff!important;
+            color:#59665f!important;
+            border-color:#cfd9d4!important;
+        }
         .payment-fields.split-mode{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         .payment-fields.split-mode .payment-field{display:block!important}
         .payment-field.payment-cash,.payment-field.payment-transfer{min-width:0}
@@ -32,7 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const getRows = () => Array.from(itemRows.querySelectorAll('tr'));
 
     function getDirection(tr) {
-        return tr.querySelector('.direction-input')?.value === 'sell' ? 'sell' : 'buy';
+        const value = tr.querySelector('.direction-input')?.value;
+        return value === 'sell' || value === 'buy' ? value : '';
     }
 
     function setDirection(tr, direction) {
@@ -61,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 hidden.type = 'hidden';
                 hidden.className = 'direction-input';
                 hidden.name = `items[${index}][direction]`;
-                hidden.value = 'buy';
+                hidden.value = '';
                 directionCell.appendChild(hidden);
             }
 
@@ -72,7 +95,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button type="button" class="trx-row-direction-btn" data-row-direction="sell">JUAL</button>
             `;
             directionCell.appendChild(wrap);
-            setDirection(tr, getDirection(tr));
+
+            const direction = getDirection(tr);
+            wrap.querySelectorAll('[data-row-direction]').forEach(button => {
+                button.classList.toggle('active', direction !== '' && button.dataset.rowDirection === direction);
+            });
         });
     }
 
@@ -124,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const direction = getDirection(tr);
             if (tr.querySelector('.currency-input, select[name*="currency_id"]')) itemCount++;
             qtyTotal += qty;
-            if (direction === 'sell') sell += subtotal; else buy += subtotal;
+            if (direction === 'sell') sell += subtotal; else if (direction === 'buy') buy += subtotal;
         });
         const diff = sell - buy, absDiff = Math.abs(diff);
         document.getElementById('summarySell').textContent = moneySafe(sell);
