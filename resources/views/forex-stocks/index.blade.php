@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Stok Valas Hari Ini · MC Almara')
+@section('page-title', 'Stok Valas Hari Ini')
 
 @section('content')
 <div class="fx-stock-page">
@@ -10,9 +11,9 @@
             <div class="fx-heading-row">
                 <div>
                     <h1>Stok Valas Hari Ini</h1>
-                    <p>Posisi stok fisik berdasarkan mata uang, variant, dan pecahan.</p>
+                    <p>Ringkasan stok per currency dan pecahan: stok awal, pembelian, penjualan, dan saldo akhir.</p>
                 </div>
-                <span class="fx-status"><i></i> Operasional</span>
+                <span class="fx-status"><i></i> Otomatis dari transaksi</span>
             </div>
         </div>
         <form method="GET" class="fx-date-form">
@@ -21,101 +22,73 @@
         </form>
     </header>
 
-    @if(session('success'))
-        <div class="fx-alert success">✓ <span>{{ session('success') }}</span></div>
-    @endif
-    @if($errors->any())
-        <div class="fx-alert error">! <span>{{ $errors->first() }}</span></div>
-    @endif
-
     <div class="fx-summary">
-        <div class="fx-card"><div class="fx-icon">◎</div><div><small>MATA UANG</small><strong>{{ $summary['currencies'] }}</strong><em>currency dalam stok</em></div></div>
+        <div class="fx-card"><div class="fx-icon">◎</div><div><small>MATA UANG</small><strong>{{ $summary['currencies'] }}</strong><em>currency dalam laporan</em></div></div>
         <div class="fx-card"><div class="fx-icon">▤</div><div><small>PECahan</small><strong>{{ $summary['denominations'] }}</strong><em>posisi pecahan</em></div></div>
-        <div class="fx-card"><div class="fx-icon">#</div><div><small>TOTAL UNIT</small><strong>{{ number_format($summary['units'], 0, ',', '.') }}</strong><em>lembar / keping</em></div></div>
-        <div class="fx-card value"><div class="fx-icon">¤</div><div><small>NILAI NOMINAL</small><strong>{{ number_format($summary['value'], 2, ',', '.') }}</strong><em>total nominal fisik</em></div></div>
+        <div class="fx-card"><div class="fx-icon">#</div><div><small>TOTAL QTY AKHIR</small><strong>{{ number_format($summary['units'], 0, ',', '.') }}</strong><em>lembar / keping</em></div></div>
+        <div class="fx-card value"><div class="fx-icon">Rp</div><div><small>NILAI SALDO AKHIR</small><strong>Rp {{ number_format($summary['value'], 2, ',', '.') }}</strong><em>nilai persediaan</em></div></div>
     </div>
 
     <section class="fx-panel">
         <div class="fx-panel-head">
-            <div><h2>Posisi Stok</h2><p>{{ \Carbon\Carbon::parse($date)->translatedFormat('l, d F Y') }}</p></div>
-            <span class="fx-count">{{ $stocks->count() }} posisi</span>
+            <div><h2>Rekap Stok Valas</h2><p>{{ \Carbon\Carbon::parse($date)->translatedFormat('l, d F Y') }}</p></div>
+            <span class="fx-info">Pembelian & penjualan dari transaksi berstatus paid/completed</span>
         </div>
         <div class="fx-table-wrap">
             <table class="fx-table">
-                <thead><tr><th>Currency</th><th>Variant</th><th>Jenis</th><th>Pecahan</th><th class="num">Qty</th><th class="num">Nilai Nominal</th></tr></thead>
-                <tbody>
-                @forelse($stocks as $stock)
+                <thead>
                     <tr>
-                        <td><b class="code">{{ $stock->variant->currency->code }}</b><span class="muted">{{ $stock->variant->currency->name }}</span></td>
-                        <td>{{ $stock->variant->name }}</td>
-                        <td><span class="badge">{{ $stock->denomination->type_label }}</span></td>
-                        <td><strong>{{ $stock->denomination->display_label }}</strong></td>
-                        <td class="num"><strong>{{ number_format((float) $stock->quantity, 0, ',', '.') }}</strong></td>
-                        <td class="num"><strong>{{ number_format((float) $stock->quantity * (float) $stock->denomination->value, 2, ',', '.') }}</strong></td>
+                        <th rowspan="2">Currency</th>
+                        <th rowspan="2">Pecahan</th>
+                        <th colspan="3" class="group opening">Stok Awal</th>
+                        <th colspan="3" class="group purchase">Pembelian</th>
+                        <th colspan="3" class="group sales">Penjualan</th>
+                        <th colspan="3" class="group ending">Saldo Akhir</th>
+                    </tr>
+                    <tr class="subhead">
+                        <th>Qty</th><th>Kurs</th><th>Rp</th>
+                        <th>Qty</th><th>Kurs</th><th>Rp</th>
+                        <th>Qty</th><th>Kurs</th><th>Rp</th>
+                        <th>Qty</th><th>Kurs</th><th>Rp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @forelse($rows as $row)
+                    <tr>
+                        <td><b class="code">{{ $row->currency_code }}</b><span class="muted">{{ $row->currency_name }}</span></td>
+                        <td><strong>{{ $row->denomination_label }}</strong><span class="muted">{{ $row->variant_name }}</span></td>
+                        <td class="num">{{ number_format($row->opening['qty'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $row->opening['rate'] !== null ? number_format($row->opening['rate'], 2, ',', '.') : '—' }}</td>
+                        <td class="num">{{ $row->opening['rp'] !== null ? number_format($row->opening['rp'], 2, ',', '.') : '—' }}</td>
+                        <td class="num">{{ number_format($row->purchase['qty'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $row->purchase['rate'] !== null ? number_format($row->purchase['rate'], 2, ',', '.') : '—' }}</td>
+                        <td class="num">{{ number_format($row->purchase['rp'], 2, ',', '.') }}</td>
+                        <td class="num">{{ number_format($row->sales['qty'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $row->sales['rate'] !== null ? number_format($row->sales['rate'], 2, ',', '.') : '—' }}</td>
+                        <td class="num">{{ number_format($row->sales['rp'], 2, ',', '.') }}</td>
+                        <td class="num ending-qty"><strong>{{ number_format($row->ending['qty'], 0, ',', '.') }}</strong></td>
+                        <td class="num ending-rate"><strong>{{ $row->ending['rate'] !== null ? number_format($row->ending['rate'], 2, ',', '.') : '—' }}</strong></td>
+                        <td class="num ending-rp"><strong>{{ $row->ending['rp'] !== null ? number_format($row->ending['rp'], 2, ',', '.') : '—' }}</strong></td>
                     </tr>
                 @empty
-                    <tr><td colspan="6"><div class="fx-empty"><div>◎</div><strong>Belum ada stok</strong><span>Belum ada posisi stok untuk tanggal ini. Masukkan stok awal melalui form di bawah.</span></div></td></tr>
+                    <tr><td colspan="14"><div class="fx-empty"><div>◎</div><strong>Belum ada data stok</strong><span>Belum ada saldo stok sebelumnya atau transaksi valas yang sudah dibayar untuk tanggal ini.</span></div></td></tr>
                 @endforelse
                 </tbody>
             </table>
         </div>
     </section>
 
-    <section class="fx-panel entry">
-        <div class="fx-panel-head">
-            <div><h2>Input / Koreksi Stok</h2><p>Masukkan jumlah fisik per pecahan untuk tanggal dan cabang aktif.</p></div>
-            <span class="fx-manual">MANUAL ENTRY</span>
-        </div>
-        <form method="POST" action="{{ route('forex-stocks.upsert') }}" class="fx-form">
-            @csrf
-            <input type="hidden" name="stock_date" value="{{ $date }}">
-            <div class="fx-field">
-                <label for="currency_variant_id">Currency & Variant</label>
-                <select name="currency_variant_id" id="currency_variant_id" required>
-                    <option value="">Pilih currency / variant</option>
-                    @foreach($currencies as $currency)
-                        <optgroup label="{{ $currency->code }} — {{ $currency->name }}">
-                            @foreach($currency->variants as $variant)
-                                <option value="{{ $variant->id }}">{{ $variant->name }}{{ $variant->code ? ' ('.$variant->code.')' : '' }}</option>
-                            @endforeach
-                        </optgroup>
-                    @endforeach
-                </select>
-            </div>
-            <div class="fx-field">
-                <label for="currency_denomination_id">Pecahan</label>
-                <select name="currency_denomination_id" id="currency_denomination_id" required disabled>
-                    <option value="">Pilih variant terlebih dahulu</option>
-                </select>
-            </div>
-            <div class="fx-field qty"><label for="stock-quantity">Qty</label><input id="stock-quantity" type="number" name="quantity" min="0" step="1" value="0" required></div>
-            <button type="submit" class="fx-save">＋ Simpan Stok</button>
-        </form>
-    </section>
+    <div class="fx-note">
+        <strong>Catatan:</strong> stok normal tidak diinput manual. Pembelian dan penjualan berasal dari item transaksi yang sudah <b>paid/completed</b>. Koreksi fisik/audit akan dibuat sebagai <b>Adjustment</b> terpisah agar tidak bercampur dengan pembelian atau penjualan.
+    </div>
 </div>
 
 <style>
-.fx-stock-page{max-width:1440px;margin:0 auto;padding:24px 28px 42px;color:#243a31}.fx-header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:20px}.fx-eyebrow{font-size:9px;font-weight:800;letter-spacing:1.3px;color:#8a9791;margin-bottom:7px}.fx-heading-row{display:flex;align-items:center;gap:14px}.fx-heading-row h1{margin:0;color:#174d3a;font-size:25px;line-height:1.15;letter-spacing:-.3px}.fx-heading-row p{margin:6px 0 0;color:#74827c;font-size:11px}.fx-status{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid #dcece3;border-radius:999px;background:#f5fbf8;color:#287153;font-size:9px;font-weight:750;white-space:nowrap}.fx-status i{width:6px;height:6px;border-radius:50%;background:#37a36f}.fx-date-form{display:flex;align-items:center;gap:9px}.fx-date-form label{font-size:10px;font-weight:750;color:#65756e}.fx-date-form input{height:38px;padding:0 10px;border:1px solid #dce5df;border-radius:9px;background:#fff;color:#30473d;font-size:11px;outline:none}.fx-alert{display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:9px;margin-bottom:15px;font-size:11px}.fx-alert.success{background:#edf8f2;border:1px solid #d5eddf;color:#176b50}.fx-alert.error{background:#fff2f1;border:1px solid #f1d9d6;color:#a23a32}.fx-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:17px}.fx-card{min-height:96px;display:flex;align-items:center;gap:13px;padding:16px 17px;border:1px solid #e3ebe7;border-radius:11px;background:#fff;box-shadow:0 3px 13px rgba(20,60,45,.035)}.fx-icon{width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex:0 0 36px;border-radius:9px;background:#eef6f2;color:#176b50;font-size:17px;font-weight:700}.fx-card small{display:block;font-size:8px;letter-spacing:.7px;font-weight:800;color:#819089}.fx-card strong{display:block;margin-top:4px;font-size:21px;line-height:1.1;color:#174d3a}.fx-card em{display:block;margin-top:4px;color:#9aa59f;font-size:9px;font-style:normal}.fx-card.value .fx-icon{background:#f8f2e5;color:#9a7733}.fx-panel{background:#fff;border:1px solid #e3ebe7;border-radius:11px;overflow:hidden;box-shadow:0 3px 13px rgba(20,60,45,.035);margin-bottom:16px}.fx-panel-head{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:15px 17px;border-bottom:1px solid #e9efeb}.fx-panel-head h2{margin:0;font-size:13px;font-weight:800;color:#214d3d}.fx-panel-head p{margin:3px 0 0;color:#8a9791;font-size:9px}.fx-count,.fx-manual{padding:5px 8px;border-radius:6px;background:#f4f7f5;color:#718078;font-size:8px;font-weight:800;letter-spacing:.4px}.fx-manual{background:#f8f2e5;color:#967536}.fx-table-wrap{overflow-x:auto}.fx-table{width:100%;border-collapse:collapse;min-width:760px}.fx-table th{padding:10px 15px;background:#f7f9f8;color:#7a8982;border-bottom:1px solid #e6ece9;text-align:left;font-size:8px;font-weight:800;letter-spacing:.65px;text-transform:uppercase}.fx-table td{padding:12px 15px;border-bottom:1px solid #edf1ef;color:#41524a;font-size:10px;vertical-align:middle}.fx-table tbody tr:last-child td{border-bottom:0}.fx-table tbody tr:hover{background:#fbfdfc}.fx-table .num{text-align:right}.fx-table td .code,.fx-table td .muted{display:block}.fx-table .code{font-size:11px;color:#174d3a}.fx-table .muted{margin-top:2px;color:#8a9791;font-size:9px;font-weight:400}.badge{display:inline-flex;padding:4px 7px;border-radius:5px;background:#f4f7f5;color:#65756e;font-size:8px;font-weight:700}.fx-empty{min-height:190px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px 20px;color:#87948e}.fx-empty div{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin-bottom:9px;background:#f0f6f3;color:#6c9181;font-size:20px}.fx-empty strong{font-size:12px;color:#53645c}.fx-empty span{max-width:420px;margin-top:5px;font-size:9px;line-height:1.5}.fx-form{display:grid;grid-template-columns:1.35fr 1.35fr .55fr auto;gap:12px;padding:17px;align-items:end}.fx-field{display:flex;flex-direction:column;gap:6px}.fx-field label{font-size:9px;font-weight:800;color:#65756e}.fx-field select,.fx-field input{width:100%;height:38px;padding:0 10px;border:1px solid #dce5df;border-radius:8px;outline:0;background:#fff;color:#30473d;font-size:10px}.fx-field select:focus,.fx-field input:focus{border-color:#77a994;box-shadow:0 0 0 3px rgba(23,107,80,.08)}.fx-field select:disabled{background:#f5f7f6;color:#9ba6a1}.fx-save{height:38px;border:0;border-radius:8px;padding:0 15px;background:#176b50;color:#fff;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}.fx-save:hover{background:#125b44}@media(max-width:1050px){.fx-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.fx-form{grid-template-columns:1fr 1fr}.fx-save{width:100%}}@media(max-width:700px){.fx-stock-page{padding:18px 14px 30px}.fx-header{align-items:stretch;flex-direction:column;gap:14px}.fx-heading-row{align-items:flex-start;flex-direction:column;gap:9px}.fx-date-form{justify-content:space-between}.fx-date-form input{flex:1}.fx-summary{grid-template-columns:1fr}.fx-form{grid-template-columns:1fr}.fx-panel-head{align-items:flex-start}.fx-manual{display:none}}
+.fx-stock-page{max-width:1600px;margin:0 auto;padding:22px 24px 40px;color:var(--ui-text,#243a31)}
+.fx-header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:18px}.fx-eyebrow{font-size:9px;font-weight:800;letter-spacing:1.3px;color:var(--ui-text-muted,#8a9791);margin-bottom:6px}.fx-heading-row{display:flex;align-items:center;gap:12px}.fx-heading-row h1{margin:0;color:var(--ui-primary-dark,#174d3a);font-size:24px;line-height:1.15}.fx-heading-row p{margin:6px 0 0;color:var(--ui-text-muted,#74827c);font-size:11px}.fx-status{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--ui-border,#dcece3);border-radius:999px;background:var(--ui-surface-soft,#f5fbf8);color:var(--ui-primary,#287153);font-size:9px;font-weight:800;white-space:nowrap}.fx-status i{width:6px;height:6px;border-radius:50%;background:var(--ui-primary,#37a36f)}.fx-date-form{display:flex;align-items:center;gap:8px}.fx-date-form label{font-size:10px;font-weight:750;color:var(--ui-text-secondary,#65756e)}.fx-date-form input{height:36px;padding:0 9px;border:1px solid var(--ui-border,#dce5df);border-radius:var(--ui-input-radius,8px);background:var(--ui-card-bg,#fff);color:var(--ui-text,#30473d);font-size:10px}
+.fx-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:15px}.fx-card{min-height:88px;display:flex;align-items:center;gap:12px;padding:14px 15px;border:1px solid var(--ui-card-border,var(--ui-border,#e3ebe7));border-radius:var(--ui-card-radius,9px);background:var(--ui-card-bg,#fff);box-shadow:var(--ui-card-shadow,none)}.fx-icon{width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex:0 0 34px;border-radius:var(--ui-button-radius,8px);background:var(--ui-surface-soft,#eef6f2);color:var(--ui-icon,var(--ui-primary,#176b50));font-size:14px;font-weight:800}.fx-card small{display:block;font-size:8px;letter-spacing:.65px;font-weight:800;color:var(--ui-text-muted,#819089)}.fx-card strong{display:block;margin-top:4px;font-size:19px;line-height:1.1;color:var(--ui-primary-dark,var(--ui-text,#174d3a))}.fx-card em{display:block;margin-top:4px;color:var(--ui-text-muted,#9aa59f);font-size:9px;font-style:normal}
+.fx-panel{background:var(--ui-card-bg,#fff);border:1px solid var(--ui-card-border,var(--ui-border,#e3ebe7));border-radius:var(--ui-card-radius,10px);overflow:hidden;box-shadow:var(--ui-card-shadow,none)}.fx-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--ui-border,#e9efeb)}.fx-panel-head h2{margin:0;font-size:13px;font-weight:800;color:var(--ui-text,#214d3d)}.fx-panel-head p{margin:3px 0 0;color:var(--ui-text-muted,#8a9791);font-size:9px}.fx-info{padding:5px 8px;border-radius:6px;background:var(--ui-surface-soft,#f4f7f5);color:var(--ui-text-secondary,#718078);font-size:8px;font-weight:750}.fx-table-wrap{overflow:auto}.fx-table{width:100%;border-collapse:separate;border-spacing:0;min-width:1280px}.fx-table th{background:var(--ui-surface-soft,#f7f9f8);color:var(--ui-text-secondary,#6f7d76);border-bottom:1px solid var(--ui-border,#e6ece9);border-right:1px solid var(--ui-border,#e6ece9);padding:8px 9px;text-align:center;font-size:8px;font-weight:800;letter-spacing:.35px;white-space:nowrap}.fx-table th:first-child,.fx-table th:nth-child(2){text-align:left}.fx-table th.group{font-size:9px;letter-spacing:.6px}.fx-table th.opening{color:var(--ui-text-secondary,#64736c)}.fx-table th.purchase{color:var(--ui-primary,#176b50)}.fx-table th.sales{color:var(--ui-gold,#a77a19)}.fx-table th.ending{color:var(--ui-primary-dark,#174d3a)}.fx-table .subhead th{font-size:7px;text-transform:uppercase}.fx-table td{padding:10px 9px;border-bottom:1px solid var(--ui-border,#edf1ef);border-right:1px solid var(--ui-border,#f0f3f1);color:var(--ui-text-secondary,#41524a);font-size:9px;vertical-align:middle;white-space:nowrap}.fx-table tbody tr:last-child td{border-bottom:0}.fx-table tbody tr:hover{background:var(--ui-surface-soft,#fbfdfc)}.fx-table .num{text-align:right;font-variant-numeric:tabular-nums}.fx-table .code{display:block;color:var(--ui-primary-dark,var(--ui-primary,#174d3a));font-size:10px}.fx-table .muted{display:block;margin-top:2px;color:var(--ui-text-muted,#8a9791);font-size:8px;font-weight:400}.fx-table .ending-qty,.fx-table .ending-rate,.fx-table .ending-rp{background:var(--ui-surface-soft,#f6faf8)}.fx-table .ending-rp{color:var(--ui-primary-dark,#174d3a)}.fx-empty{min-height:180px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:25px;color:var(--ui-text-muted,#87948e)}.fx-empty div{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin-bottom:8px;background:var(--ui-surface-soft,#f0f6f3);color:var(--ui-icon,var(--ui-primary,#6c9181));font-size:18px}.fx-empty strong{font-size:12px;color:var(--ui-text-secondary,#53645c)}.fx-empty span{max-width:480px;margin-top:5px;font-size:9px;line-height:1.5}.fx-note{margin-top:12px;padding:10px 13px;border:1px solid var(--ui-border,#e3ebe7);border-radius:var(--ui-button-radius,8px);background:var(--ui-surface-soft,#f7f9f8);color:var(--ui-text-secondary,#64736c);font-size:9px;line-height:1.55}.fx-note strong{color:var(--ui-text,#30473d)}
+@media(max-width:900px){.fx-stock-page{padding:18px 14px 30px}.fx-header{align-items:stretch;flex-direction:column}.fx-heading-row{align-items:flex-start;flex-direction:column}.fx-date-form{justify-content:space-between}.fx-date-form input{flex:1}.fx-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.fx-info{display:none}}
+@media(max-width:520px){.fx-summary{grid-template-columns:1fr}.fx-heading-row h1{font-size:20px}}
 </style>
-
-<script>
-const currencyVariants = @json($currencyVariants);
-const variantSelect = document.getElementById('currency_variant_id');
-const denominationSelect = document.getElementById('currency_denomination_id');
-
-variantSelect?.addEventListener('change', () => {
-    const variant = currencyVariants.find((item) => String(item.id) === String(variantSelect.value));
-    denominationSelect.innerHTML = '<option value="">Pilih pecahan</option>';
-    denominationSelect.disabled = !variant;
-
-    if (!variant) return;
-
-    variant.denominations.forEach((denomination) => {
-        const option = document.createElement('option');
-        option.value = denomination.id;
-        option.textContent = `${denomination.label} — ${denomination.type}`;
-        denominationSelect.appendChild(option);
-    });
-});
-</script>
 @endsection
