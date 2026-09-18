@@ -12,6 +12,7 @@ use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\CustomerRiskMasterController;
 use App\Http\Controllers\RateController;
 use App\Http\Controllers\ForexStockController;
+use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\TenantSettingController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\ComplianceThresholdRuleController;
@@ -96,6 +97,8 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::post('/pengaturan/compliance-threshold', [ComplianceThresholdRuleController::class, 'store'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.store');
     Route::put('/pengaturan/compliance-threshold/{complianceThresholdRule}', [ComplianceThresholdRuleController::class, 'update'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.update');
     Route::patch('/pengaturan/compliance-threshold/{complianceThresholdRule}/toggle', [ComplianceThresholdRuleController::class, 'toggle'])->middleware('permission:settings.manage')->name('settings.compliance-threshold.toggle');
+    Route::get('/saldo-awal', [OpeningBalanceController::class, 'index'])->middleware('permission:settings.manage')->name('opening-balances.index');
+    Route::post('/saldo-awal', [OpeningBalanceController::class, 'store'])->middleware('permission:settings.manage')->name('opening-balances.store');
     Route::get('/stok-valas', [ForexStockController::class, 'index'])->name('forex-stocks.index');
     Route::post('/stok-valas', [ForexStockController::class, 'upsert'])->middleware('permission:settings.manage')->name('forex-stocks.upsert');
     Route::get('/customers/import', [CustomerImportController::class, 'index'])->name('customers.import');
