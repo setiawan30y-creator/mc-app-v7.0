@@ -34,6 +34,7 @@
 <script src="{{ asset('js/transaction-workspace.js') }}"></script>
 <script src="{{ asset('js/transaction-direction-stabilizer.js') }}"></script>
 <script src="{{ asset('js/transaction-customer-create.js') }}"></script>
+<script src="{{ asset('js/dashboard-data.js') }}"></script>
 @stack('scripts')
 </body>
 </html>
