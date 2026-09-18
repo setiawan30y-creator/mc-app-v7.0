@@ -1,15 +1,7 @@
 <aside class="sidebar">
 
     {{-- SIDEBAR TOGGLE --}}
-    <button
-        type="button"
-        class="sidebar-toggle-button"
-        id="sidebarToggleButton"
-        aria-label="Sembunyikan sidebar"
-        title="Sembunyikan sidebar"
-    >
-        ‹
-    </button>
+    <button type="button" class="sidebar-toggle-button" id="sidebarToggleButton" aria-label="Sembunyikan sidebar" title="Sembunyikan sidebar">‹</button>
 
     {{-- BRAND --}}
     <div class="brand">
@@ -23,9 +15,7 @@
     {{-- TENANT --}}
     <div class="tenant-box">
         <div class="tenant-label">TENANT</div>
-        <div class="tenant-name">
-            {{ auth()->user()->tenant->name ?? 'MC Almara' }}
-        </div>
+        <div class="tenant-name">{{ auth()->user()->tenant->name ?? 'MC Almara' }}</div>
     </div>
 
     {{-- NAVIGATION --}}
@@ -33,67 +23,64 @@
         <div class="nav-section">
             <div class="nav-section-title">WORKSPACE</div>
 
-            <a href="/" class="nav-item {{ request()->is('/') ? 'active' : '' }}">
-                <span class="nav-icon">⌂</span>
-                <span class="nav-text">Dashboard</span>
+            <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                <span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span>
             </a>
 
             <a href="{{ route('transactions.create') }}" class="nav-item {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
-                <span class="nav-icon">⇄</span>
-                <span class="nav-text">Transaksi</span>
+                <span class="nav-icon">⇄</span><span class="nav-text">Transaksi</span>
             </a>
 
             <a href="{{ route('customers.index') }}" class="nav-item {{ request()->routeIs('customers.*') ? 'active' : '' }}">
-                <span class="nav-icon">♙</span>
-                <span class="nav-text">Customer</span>
+                <span class="nav-icon">♙</span><span class="nav-text">Nasabah</span>
             </a>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">✓</span>
-                <span class="nav-text">KYC & Compliance</span>
+            <a href="{{ route('settings.compliance-threshold.index') }}" class="nav-item {{ request()->routeIs('settings.compliance-threshold.*') ? 'active' : '' }}">
+                <span class="nav-icon">✓</span><span class="nav-text">KYC & Compliance</span>
             </a>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">TREASURY</div>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">◎</span>
-                <span class="nav-text">Mata Uang</span>
+            <a href="{{ route('settings.currency-variants.index') }}" class="nav-item {{ request()->routeIs('settings.currency-variants.*') ? 'active' : '' }}">
+                <span class="nav-icon">◎</span><span class="nav-text">Mata Uang</span>
+            </a>
+
+            <a href="{{ route('settings.denominations.index') }}" class="nav-item {{ request()->routeIs('settings.denominations.*') ? 'active' : '' }}">
+                <span class="nav-icon">▤</span><span class="nav-text">Pecahan</span>
             </a>
 
             <a href="{{ route('settings.rates.index') }}" class="nav-item {{ request()->routeIs('settings.rates.*') ? 'active' : '' }}">
-                <span class="nav-icon">↗</span>
-                <span class="nav-text">Kurs & Rate</span>
+                <span class="nav-icon">↗</span><span class="nav-text">Kurs & Rate</span>
             </a>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">▣</span>
-                <span class="nav-text">Kas & Bank</span>
+            <a href="{{ route('settings.bank-accounts.index') }}" class="nav-item {{ request()->routeIs('settings.bank-accounts.*') ? 'active' : '' }}">
+                <span class="nav-icon">▣</span><span class="nav-text">Kas & Bank</span>
             </a>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">▤</span>
-                <span class="nav-text">Stok Valas</span>
+            <a href="{{ route('gantungan.index') }}" class="nav-item {{ request()->routeIs('gantungan.*') ? 'active' : '' }}">
+                <span class="nav-icon">⊙</span><span class="nav-text">Gantungan</span>
+            </a>
+
+            <a href="{{ route('closing.index') }}" class="nav-item {{ request()->routeIs('closing.*') ? 'active' : '' }}">
+                <span class="nav-icon">◫</span><span class="nav-text">Closing Operasional</span>
             </a>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">MANAGEMENT</div>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">▥</span>
-                <span class="nav-text">Laporan</span>
+            <a href="{{ route('settings.company.edit') }}" class="nav-item {{ request()->routeIs('settings.company.*') ? 'active' : '' }}">
+                <span class="nav-icon">▥</span><span class="nav-text">Perusahaan</span>
             </a>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">▤</span>
-                <span class="nav-text">Accounting</span>
+            <a href="{{ route('settings.customer-risk.index') }}" class="nav-item {{ request()->routeIs('settings.customer-risk.*') ? 'active' : '' }}">
+                <span class="nav-icon">▤</span><span class="nav-text">Master Customer Risk</span>
             </a>
 
-            <a href="#" class="nav-item">
-                <span class="nav-icon">⚙</span>
-                <span class="nav-text">Pengaturan</span>
+            <a href="{{ route('settings.iso-currencies.index') }}" class="nav-item {{ request()->routeIs('settings.iso-currencies.*') ? 'active' : '' }}">
+                <span class="nav-icon">◎</span><span class="nav-text">ISO Currencies</span>
             </a>
         </div>
     </nav>
@@ -120,7 +107,7 @@
             <div class="sidebar-user-menu-divider"></div>
             <a href="#" class="sidebar-user-menu-item"><span class="menu-item-icon">👤</span><span>Profil Saya</span></a>
             <a href="#" class="sidebar-user-menu-item"><span class="menu-item-icon">🏢</span><span>Tenant & Cabang</span></a>
-            <a href="#" class="sidebar-user-menu-item"><span class="menu-item-icon">⚙</span><span>Pengaturan</span></a>
+            <a href="{{ route('settings.company.edit') }}" class="sidebar-user-menu-item"><span class="menu-item-icon">⚙</span><span>Pengaturan</span></a>
             <a href="#" class="sidebar-user-menu-item"><span class="menu-item-icon">🔐</span><span>Keamanan</span></a>
             <div class="sidebar-user-menu-divider"></div>
             <form method="POST" action="{{ route('logout') }}">
