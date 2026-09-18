@@ -4,15 +4,44 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class TransactionCustomerController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
-        $user = $request->user();
+        // Saat dipanggil dari Form Master Nasabah, serahkan seluruh proses
+        // penyimpanan ke CustomerController agar hanya ada satu sumber logika.
+        if ($request->input('_return_to') === 'transaction') {
+            $beforeId = Customer::query()
+                ->where('tenant_id', $request->user()->tenant_id)
+                ->where('branch_id', $request->user()->branch_id)
+                ->max('id');
 
+            $response = app(CustomerController::class)->store($request);
+
+            if ($response instanceof RedirectResponse && $response->getTargetUrl() === route('customers.index')) {
+                $customer = Customer::query()
+                    ->where('tenant_id', $request->user()->tenant_id)
+                    ->where('branch_id', $request->user()->branch_id)
+                    ->where('id', '>', (int) $beforeId)
+                    ->latest('id')
+                    ->first();
+
+                if ($customer) {
+                    return redirect()
+                        ->route('transactions.create', ['customer_id' => $customer->id])
+                        ->with('success', "Nasabah {$customer->no_cif} berhasil ditambahkan dan otomatis dipilih.");
+                }
+            }
+
+            return $response;
+        }
+
+        // Endpoint lama tetap tersedia untuk kebutuhan quick-create/API transaksi.
+        $user = $request->user();
         $validated = $request->validate([
             'full_name' => ['required', 'string', 'max:150'],
             'phone' => ['nullable', 'string', 'max:30'],
@@ -41,7 +70,10 @@ class TransactionCustomerController extends Controller
 
         do {
             $customerNumber = 'C' . now()->format('ymdHis') . strtoupper(Str::random(3));
-        } while (Customer::query()->where('tenant_id', $user->tenant_id)->where('customer_number', $customerNumber)->exists());
+        } while (Customer::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->where('customer_number', $customerNumber)
+            ->exists());
 
         $customer = Customer::query()->create([
             'tenant_id' => $user->tenant_id,
