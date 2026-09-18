@@ -13,6 +13,7 @@
             <a href="{{ route('settings.currency-variants.index') }}" class="nav-item {{ request()->routeIs('settings.currency-variants.*') ? 'active' : '' }}"><span class="nav-icon">◎</span><span class="nav-text">Mata Uang</span></a>
             <a href="{{ route('settings.denominations.index') }}" class="nav-item {{ request()->routeIs('settings.denominations.*') ? 'active' : '' }}"><span class="nav-icon">▤</span><span class="nav-text">Pecahan</span></a>
             <a href="{{ route('forex-stocks.index') }}" class="nav-item {{ request()->routeIs('forex-stocks.*') ? 'active' : '' }}"><span class="nav-icon">▱</span><span class="nav-text">Stok Valas</span></a>
+            <a href="{{ route('opening-balances.index') }}" class="nav-item {{ request()->routeIs('opening-balances.*') ? 'active' : '' }}"><span class="nav-icon">◌</span><span class="nav-text">Saldo Awal</span></a>
             <a href="{{ route('settings.rates.index') }}" class="nav-item {{ request()->routeIs('settings.rates.*') ? 'active' : '' }}"><span class="nav-icon">◉</span><span class="nav-text">Manajemen Kurs</span></a>
             <a href="{{ route('settings.bank-accounts.index') }}" class="nav-item {{ request()->routeIs('settings.bank-accounts.*') ? 'active' : '' }}"><span class="nav-icon">▣</span><span class="nav-text">Kas & Bank</span></a>
             <a href="{{ route('gantungan.index') }}" class="nav-item {{ request()->routeIs('gantungan.*') ? 'active' : '' }}"><span class="nav-icon">⊙</span><span class="nav-text">Gantungan</span></a>
