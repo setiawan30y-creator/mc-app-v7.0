@@ -20,7 +20,7 @@ class ForexStockController extends Controller
         $day = Carbon::parse($date)->startOfDay();
 
         // Saldo awal resmi menjadi baseline pertama stok. Setelah itu,
-        // snapshot forex_stocks (jika ada) tetap menjadi sumber opening harian.
+        // snapshot forex_stocks (jika ada) tetap menjadi opening harian.
         $snapshot = ForexStock::query()
             ->with(['variant.currency', 'denomination'])
             ->where('tenant_id', $tenantId)
@@ -44,18 +44,22 @@ class ForexStockController extends Controller
             ->map(fn ($items) => $items->first());
 
         $baselineDate = $openingBalances->max('balance_date');
-        $transactionQuery = McTransactionItem::query()
-            ->with(['currency', 'currencyVariant', 'currencyDenomination'])
+
+        // Transaksi paid/completed menjadi pembelian/penjualan dan ikut membentuk
+        // saldo setelah opening balance. Relasi transaction sengaja di-eager-load
+        // karena tanggal transaksi dipakai untuk memisahkan opening dan movement hari ini.
+        $items = McTransactionItem::query()
+            ->with(['transaction', 'currency', 'currencyVariant', 'currencyDenomination'])
             ->whereHas('transaction', function ($query) use ($tenantId, $branchId, $day, $baselineDate) {
                 $query->where('tenant_id', $tenantId)
                     ->where('branch_id', $branchId)
                     ->whereIn('status', ['paid', 'completed'])
                     ->when($baselineDate, fn ($q) => $q->whereDate('transaction_date', '>=', Carbon::parse($baselineDate)->toDateString()))
                     ->whereDate('transaction_date', '<=', $day->toDateString());
-            });
-        $items = $transactionQuery->get();
-        $movements = $items->groupBy('currency_denomination_id');
+            })
+            ->get();
 
+        $movements = $items->groupBy('currency_denomination_id');
         $denominationIds = $snapshot->keys()
             ->merge($openingByDenomination->keys())
             ->merge($movements->keys())
@@ -65,19 +69,17 @@ class ForexStockController extends Controller
             ? CurrencyDenomination::query()->with(['variant.currency'])->whereIn('id', $denominationIds)->get()->keyBy('id')
             : collect();
 
-        $rows = $denominationIds->map(function ($denominationId) use ($snapshot, $openingByDenomination, $movements, $denominations, $day, $baselineDate) {
+        $rows = $denominationIds->map(function ($denominationId) use ($snapshot, $openingByDenomination, $movements, $denominations, $day) {
             $denomination = $denominations->get($denominationId);
             $openingBalance = $openingByDenomination->get($denominationId);
             $stockSnapshot = $snapshot->get($denominationId);
             $allItems = $movements->get($denominationId, collect());
-            $dayItems = $allItems->filter(fn ($item) => Carbon::parse($item->transaction?->transaction_date)->isSameDay($day));
-            $priorItems = $allItems->reject(fn ($item) => Carbon::parse($item->transaction?->transaction_date)->isSameDay($day));
+            $dayItems = $allItems->filter(fn ($item) => $item->transaction && Carbon::parse($item->transaction->transaction_date)->isSameDay($day));
+            $priorItems = $allItems->reject(fn ($item) => $item->transaction && Carbon::parse($item->transaction->transaction_date)->isSameDay($day));
 
             $baselineQty = (float) ($openingBalance?->quantity ?? $stockSnapshot?->quantity ?? 0);
             $baselineRp = (float) ($openingBalance?->amount_rp ?? 0);
 
-            // Bila ada snapshot kemarin, gunakan snapshot sebagai opening harian.
-            // Jika belum ada snapshot, bentuk opening dari saldo awal + transaksi sebelum hari laporan.
             if ($stockSnapshot) {
                 $openingQty = (float) $stockSnapshot->quantity;
                 $openingRp = $baselineRp > 0 ? $baselineRp : null;
