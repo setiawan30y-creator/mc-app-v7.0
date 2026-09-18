@@ -33,6 +33,20 @@ document.addEventListener('DOMContentLoaded', () => {
             .customer-search-result:hover,.customer-search-result.active{background:#f1f6f3}
             .customer-search-result small{display:block;margin-top:2px;color:#7a8580;font-size:9px}
             .customer-search-empty{padding:8px 9px;color:#8a948f;font-size:10px}
+
+            /* 02 · ITEM TRANSAKSI: tetap input number, hanya hilangkan spinner ▲▼ */
+            #itemRows input[type="number"].qty-input::-webkit-outer-spin-button,
+            #itemRows input[type="number"].qty-input::-webkit-inner-spin-button,
+            #itemRows input[type="number"].rate-input::-webkit-outer-spin-button,
+            #itemRows input[type="number"].rate-input::-webkit-inner-spin-button{
+                -webkit-appearance:none;
+                margin:0;
+            }
+            #itemRows input[type="number"].qty-input,
+            #itemRows input[type="number"].rate-input{
+                -moz-appearance:textfield;
+                appearance:textfield;
+            }
         `;
         document.head.appendChild(style);
     }
