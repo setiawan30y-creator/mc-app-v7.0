@@ -53,6 +53,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getRows = () => Array.from(itemRows.querySelectorAll('tr'));
 
+    // Modul 02 · ITEM TRANSAKSI: mouse wheel tidak boleh mengubah angka QTY/RATE.
+    // Input tetap type="number" dan tetap bisa diedit menggunakan keyboard.
+    itemRows.addEventListener('wheel', event => {
+        const input = event.target.closest('.qty-input, .rate-input');
+        if (!input) return;
+        event.preventDefault();
+    }, {passive:false});
+
     function getDirection(tr) {
         const value = tr.querySelector('.direction-input')?.value;
         return value === 'sell' || value === 'buy' ? value : '';
