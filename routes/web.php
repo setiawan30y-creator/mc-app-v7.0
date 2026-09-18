@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankMutationController;
 use App\Http\Controllers\CashClosingController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GantunganController;
 use App\Http\Controllers\CurrencyDenominationController;
 use App\Http\Controllers\CurrencyVariantController;
@@ -27,7 +28,8 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
 Route::middleware(['auth','tenant.context','branch.context'])->group(function () {
-    Route::get('/', fn () => view('dashboard'))->middleware('permission:dashboard.view')->name('dashboard');
+    Route::get('/', [DashboardController::class, 'index'])->middleware('permission:dashboard.view')->name('dashboard');
+    Route::get('/dashboard/data', [DashboardController::class, 'data'])->middleware('permission:dashboard.view')->name('dashboard.data');
     Route::get('/teller', [TellerController::class, 'index'])->name('teller.index');
     Route::get('/teller/transaction/create', [TransactionController::class, 'create'])->name('transactions.create');
     Route::post('/teller/transaction/customer', [TransactionCustomerController::class, 'store'])->middleware('permission:customer.create')->name('transactions.customer-store');
