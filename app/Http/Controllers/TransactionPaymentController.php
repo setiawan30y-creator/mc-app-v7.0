@@ -6,16 +6,20 @@ use App\Models\BankAccount;
 use App\Models\Currency;
 use App\Models\McTransaction;
 use App\Models\McTransactionPayment;
+use App\Services\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
-use Throwable;
 
 class TransactionPaymentController extends Controller
 {
+    public function __construct(
+        protected LedgerPostingService $ledgerPostingService,
+    ) {
+    }
+
     public function create(string $transaction)
     {
         $trx = $this->transaction($transaction);
@@ -111,14 +115,32 @@ class TransactionPaymentController extends Controller
         }
 
         DB::transaction(function () use ($trx, $settlement, $idr, $cash, $transfer, $validated) {
-            $method = $validated['payment_method'];
-
             if ($cash > 0) {
-                $this->createPayment($trx, $settlement, $idr, 'cash', $cash, $validated, null);
+                $payment = $this->createPayment(
+                    $trx,
+                    $settlement,
+                    $idr,
+                    'cash',
+                    $cash,
+                    $validated,
+                    null
+                );
+
+                $this->ledgerPostingService->postPayment($payment);
             }
 
             if ($transfer > 0) {
-                $this->createPayment($trx, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id']);
+                $payment = $this->createPayment(
+                    $trx,
+                    $settlement,
+                    $idr,
+                    'transfer',
+                    $transfer,
+                    $validated,
+                    $validated['bank_account_id']
+                );
+
+                $this->ledgerPostingService->postPayment($payment);
             }
 
             $trx->forceFill([
@@ -131,8 +153,15 @@ class TransactionPaymentController extends Controller
         return redirect()->route('teller.index')->with('success', 'Pembayaran transaksi ' . $trx->transaction_no . ' berhasil disimpan.');
     }
 
-    protected function createPayment(McTransaction $trx, $settlement, Currency $idr, string $method, float $amount, array $validated, ?string $bankAccountId): McTransactionPayment
-    {
+    protected function createPayment(
+        McTransaction $trx,
+        $settlement,
+        Currency $idr,
+        string $method,
+        float $amount,
+        array $validated,
+        ?string $bankAccountId
+    ): McTransactionPayment {
         return McTransactionPayment::query()->create([
             'id' => (string) Str::ulid(),
             'transaction_id' => $trx->id,
