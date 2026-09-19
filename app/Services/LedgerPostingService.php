@@ -14,14 +14,15 @@ use RuntimeException;
 class LedgerPostingService
 {
     public const MOVEMENT_TRANSACTION_PAYMENT = 'transaction_payment';
+    public const MOVEMENT_EXPENSE = 'expense';
     public const SOURCE_TRANSACTION = 'manual';
     public const RECONCILIATION_MATCHED = 'matched';
 
     /**
      * Post a confirmed transaction payment into the financial ledger.
      *
-     * IDR customer_pays  => Cash IN / Bank CREDIT.
-     * IDR customer_receives => Cash OUT / Bank DEBIT.
+     * IDR customer_pays      => Cash IN / Bank CREDIT.
+     * IDR customer_receives  => Cash OUT / Bank DEBIT.
      *
      * The operation is idempotent: an already-posted payment is not posted twice.
      */
@@ -64,6 +65,186 @@ class LedgerPostingService
                 );
             }
         });
+    }
+
+    /**
+     * Post a posted expense into the same cash/bank ledger used by transactions.
+     *
+     * $data:
+     * - tenant_id
+     * - branch_id
+     * - source_type: cash|bank
+     * - bank_account_id: required for bank
+     * - amount
+     * - reference
+     * - notes
+     * - created_by
+     * - expense_key: optional idempotency key stored as reference
+     */
+    public function postExpense(array $data): void
+    {
+        DB::transaction(function () use ($data): void {
+            $tenantId = trim((string) ($data['tenant_id'] ?? ''));
+            $branchId = trim((string) ($data['branch_id'] ?? ''));
+            $sourceType = strtolower(trim((string) ($data['source_type'] ?? '')));
+            $amount = round((float) ($data['amount'] ?? 0), 2);
+            $reference = trim((string) ($data['reference'] ?? ''));
+            $notes = $data['notes'] ?? null;
+            $createdBy = $data['created_by'] ?? null;
+
+            if ($tenantId === '' || $branchId === '') {
+                throw new RuntimeException('Tenant dan branch pengeluaran wajib diisi.');
+            }
+
+            if (!in_array($sourceType, ['cash', 'bank'], true)) {
+                throw new RuntimeException('Sumber pengeluaran harus cash atau bank.');
+            }
+
+            if ($amount <= 0) {
+                throw new RuntimeException('Nominal pengeluaran harus lebih besar dari 0.');
+            }
+
+            if ($reference === '') {
+                throw new RuntimeException('Nomor referensi pengeluaran wajib diisi.');
+            }
+
+            if ($sourceType === 'cash') {
+                $this->postExpenseCash(
+                    $tenantId,
+                    $branchId,
+                    $amount,
+                    $reference,
+                    $notes,
+                    $createdBy
+                );
+                return;
+            }
+
+            $bankAccountId = trim((string) ($data['bank_account_id'] ?? ''));
+            if ($bankAccountId === '') {
+                throw new RuntimeException('Rekening bank wajib dipilih untuk pengeluaran bank.');
+            }
+
+            $this->postExpenseBank(
+                $tenantId,
+                $branchId,
+                $bankAccountId,
+                $amount,
+                $reference,
+                $notes,
+                $createdBy
+            );
+        });
+    }
+
+    protected function postExpenseCash(
+        string $tenantId,
+        string $branchId,
+        float $amount,
+        string $reference,
+        ?string $notes,
+        ?int $createdBy
+    ): void {
+        $existing = CashMovement::query()
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->where('movement_type', self::MOVEMENT_EXPENSE)
+            ->where('reference', $reference)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            return;
+        }
+
+        $idr = Currency::query()->where('code', 'IDR')->first();
+        if (!$idr) {
+            throw new RuntimeException('Currency IDR tidak ditemukan.');
+        }
+
+        CashMovement::query()->create([
+            'id' => (string) Str::ulid(),
+            'tenant_id' => $tenantId,
+            'branch_id' => $branchId,
+            'transaction_id' => null,
+            'payment_id' => null,
+            'currency_id' => $idr->id,
+            'currency_variant_id' => null,
+            'currency_denomination_id' => null,
+            'direction' => 'out',
+            'quantity' => 1,
+            'amount' => $amount,
+            'movement_type' => self::MOVEMENT_EXPENSE,
+            'reference' => $reference,
+            'notes' => $notes,
+            'created_by' => $createdBy,
+        ]);
+    }
+
+    protected function postExpenseBank(
+        string $tenantId,
+        string $branchId,
+        string $bankAccountId,
+        float $amount,
+        string $reference,
+        ?string $notes,
+        ?int $createdBy
+    ): void {
+        $bank = BankAccount::query()
+            ->whereKey($bankAccountId)
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$bank) {
+            throw new RuntimeException('Rekening bank pengeluaran tidak ditemukan.');
+        }
+
+        $existing = BankMutation::query()
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->where('bank_account_id', $bank->id)
+            ->where('source', self::SOURCE_TRANSACTION)
+            ->where('reference', $reference)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            return;
+        }
+
+        $lastMutation = BankMutation::query()
+            ->where('bank_account_id', $bank->id)
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('created_at')
+            ->lockForUpdate()
+            ->first();
+
+        $previousBalance = $lastMutation?->balance;
+        if ($previousBalance === null) {
+            $previousBalance = $bank->opening_balance ?? 0;
+        }
+
+        $balance = round((float) $previousBalance - $amount, 2);
+
+        BankMutation::query()->create([
+            'tenant_id' => $tenantId,
+            'branch_id' => $branchId,
+            'bank_account_id' => $bank->id,
+            'transaction_date' => now(),
+            'value_date' => now()->toDateString(),
+            'reference' => $reference,
+            'description' => 'Pengeluaran ' . $reference,
+            'debit' => $amount,
+            'credit' => 0,
+            'balance' => $balance,
+            'external_id' => null,
+            'source' => self::SOURCE_TRANSACTION,
+            'reconciliation_status' => self::RECONCILIATION_MATCHED,
+            'matched_transaction_id' => null,
+            'notes' => $notes,
+        ]);
     }
 
     protected function postCashPayment(
