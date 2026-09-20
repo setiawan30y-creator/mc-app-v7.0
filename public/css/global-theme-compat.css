@@ -1,0 +1,88 @@
+/* MC APP V7.0 — Global Theme Compatibility Layer
+ * Legacy pages may use short variable names. Map them to Global UI tokens.
+ */
+:root {
+    --bg: var(--ui-page-bg);
+    --sidebar: var(--ui-sidebar-bg);
+    --sidebar-dark: var(--ui-primary-dark);
+    --sidebar-light: var(--ui-primary);
+    --sidebar-soft: color-mix(in srgb, var(--ui-sidebar-text) 9%, transparent);
+    --text: var(--ui-text);
+    --muted: var(--ui-text-muted);
+    --border: var(--ui-border);
+    --card: var(--ui-card-bg);
+    --primary: var(--ui-primary);
+    --primary-light: var(--ui-primary-light);
+    --gold: var(--ui-gold);
+    --gold-light: var(--ui-gold-light);
+    --success: var(--ui-success);
+    --danger: var(--ui-danger);
+}
+
+html, body { background: var(--ui-page-bg); color: var(--ui-text); }
+
+.card, .panel, .ui-card, .theme-card {
+    background: var(--ui-card-bg);
+    border-color: var(--ui-card-border);
+    border-radius: var(--ui-card-radius);
+    box-shadow: var(--ui-card-shadow);
+    color: var(--ui-text);
+}
+
+.card-header, .panel-header {
+    background: var(--ui-card-bg);
+    border-color: var(--ui-border);
+    color: var(--ui-text);
+}
+
+input, select, textarea {
+    background: var(--ui-card-bg);
+    color: var(--ui-text);
+    border-color: var(--ui-border);
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--ui-border-focus);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 12%, transparent);
+}
+
+button, .btn, .button { font-family: var(--ui-font-family); }
+
+.primary-button, .btn-primary {
+    background: var(--ui-primary);
+    border-color: var(--ui-primary);
+    color: var(--ui-text-light);
+}
+.primary-button:hover, .btn-primary:hover {
+    background: var(--ui-primary-dark);
+    border-color: var(--ui-primary-dark);
+}
+
+.text-primary { color: var(--ui-primary) !important; }
+.text-muted { color: var(--ui-text-muted) !important; }
+.text-success { color: var(--ui-success) !important; }
+.text-danger { color: var(--ui-danger) !important; }
+
+.border, .border-top, .border-end, .border-bottom, .border-start {
+    border-color: var(--ui-border) !important;
+}
+
+.table thead th { background: var(--ui-table-header-bg); color: var(--ui-text-secondary); }
+.table tbody td { background: var(--ui-surface); color: var(--ui-text); border-color: var(--ui-table-border); }
+.table tbody tr:hover td { background: var(--ui-table-row-hover); }
+
+/* Common legacy inline-style classes used by older V7 pages. */
+.page, .page-content, .main-content, .content-area { color: var(--ui-text); }
+.bg-white, .bg-light { background-color: var(--ui-card-bg) !important; }
+
+/* Dark mode follows the same tokens automatically. */
+html.theme-dark body,
+html.theme-dark .page,
+html.theme-dark .page-content,
+html.theme-dark .main-content,
+html.theme-dark .content-area {
+    background: var(--ui-page-bg);
+    color: var(--ui-text);
+}
+html.theme-dark .bg-white,
+html.theme-dark .bg-light { background-color: var(--ui-card-bg) !important; }
