@@ -22,6 +22,8 @@
         @media(max-width:800px){.main{margin-left:70px}.content{padding:20px 16px 30px}}
     </style>
     @stack('styles')
+    {{-- Load compatibility last so legacy/module CSS cannot override the Global UI tokens. --}}
+    <link rel="stylesheet" href="{{ asset('css/global-theme-compat.css') }}?v={{ filemtime(public_path('css/global-theme-compat.css')) }}">
 </head>
 <body>
 <div class="app">
