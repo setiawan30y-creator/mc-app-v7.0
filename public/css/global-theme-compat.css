@@ -90,3 +90,227 @@ html.theme-dark .content-area {
 }
 html.theme-dark .bg-white,
 html.theme-dark .bg-light { background-color: var(--ui-card-bg) !important; }
+
+/* ============================================================
+   V7.0 PAGE-SPECIFIC THEME BRIDGE
+   These selectors intentionally live in the global layer so the
+   legacy module CSS remains separate while all visual tokens are
+   controlled by Pengaturan > Tampilan & Tema.
+   ============================================================ */
+
+/* Dashboard */
+.dashboard .welcome-box,
+.dashboard .finance-card,
+.dashboard .dashboard-card,
+.dashboard .trx-summary-box {
+    background: var(--ui-card-bg) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-card-border) !important;
+    box-shadow: var(--ui-card-shadow) !important;
+}
+.dashboard .welcome-box {
+    background: linear-gradient(135deg, var(--ui-card-bg), var(--ui-surface)) !important;
+}
+.dashboard .welcome-title,
+.dashboard .finance-value,
+.dashboard .dashboard-card-title,
+.dashboard .summary-value,
+.dashboard .transaction-number,
+.dashboard .transaction-customer {
+    color: var(--ui-text) !important;
+}
+.dashboard .welcome-text,
+.dashboard .finance-label,
+.dashboard .finance-neutral,
+.dashboard .dashboard-card-subtitle,
+.dashboard .legend-item,
+.dashboard .summary-label,
+.dashboard .transaction-table td {
+    color: var(--ui-text-muted) !important;
+}
+.dashboard .welcome-badge,
+.dashboard .summary-total,
+.dashboard .chart-range.active,
+.dashboard .type-buy {
+    background: var(--ui-primary-light) !important;
+    color: var(--ui-primary-dark) !important;
+}
+.dashboard .finance-icon {
+    background: var(--ui-surface) !important;
+    color: var(--ui-primary) !important;
+}
+.dashboard .dashboard-card-header,
+.dashboard .transaction-table th,
+.dashboard .transaction-table td,
+.dashboard .summary-row {
+    border-color: var(--ui-table-border) !important;
+}
+.dashboard .transaction-table th {
+    background: var(--ui-table-header-bg) !important;
+    color: var(--ui-text-secondary) !important;
+}
+.dashboard .transaction-table td { background: var(--ui-surface) !important; }
+.dashboard .chart-range:hover { background: var(--ui-table-row-hover) !important; }
+.dashboard .dashboard-card-link { color: var(--ui-gold) !important; }
+.dashboard .summary-total-label { color: var(--ui-primary-dark) !important; }
+.dashboard .summary-total-value { color: var(--ui-primary-dark) !important; }
+.dashboard .weather-card {
+    background: linear-gradient(135deg, var(--ui-primary-dark), var(--ui-primary), var(--ui-primary-dark)) !important;
+    color: var(--ui-text-light) !important;
+}
+.dashboard .weather-condition,
+.dashboard .weather-location-sub { color: color-mix(in srgb, var(--ui-text-light) 82%, transparent) !important; }
+.dashboard .finance-positive,
+.dashboard .status-success,
+.dashboard .legend-buy { color: var(--ui-success) !important; }
+.dashboard .finance-negative,
+.dashboard .status-process { color: var(--ui-danger) !important; }
+
+/* Transaction create */
+.trx-page {
+    background: var(--ui-page-bg) !important;
+    color: var(--ui-text) !important;
+}
+.trx-paper,
+.trx-summary-box,
+.trx-difference {
+    background: var(--ui-card-bg) !important;
+    border-color: var(--ui-card-border) !important;
+    color: var(--ui-text) !important;
+    box-shadow: var(--ui-card-shadow);
+}
+.trx-section-head {
+    background: var(--ui-table-header-bg) !important;
+    border-color: var(--ui-border) !important;
+    color: var(--ui-text) !important;
+}
+.trx-eyebrow,
+.trx-subtitle,
+.trx-label,
+.customer-history-note,
+.trx-summary-note,
+.payment-help,
+.trx-difference-note {
+    color: var(--ui-text-muted) !important;
+}
+.trx-title,
+.customer-history-title,
+.trx-summary-value,
+.trx-difference-value,
+.payment-total {
+    color: var(--ui-text) !important;
+}
+.trx-control,
+.trx-table input,
+.trx-table select,
+.direction-btn,
+.row-direction-btn,
+.payment-method-btn {
+    background: var(--ui-card-bg) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-border) !important;
+}
+.trx-control:focus,
+.trx-table input:focus,
+.trx-table select:focus {
+    border-color: var(--ui-border-focus) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 12%, transparent) !important;
+}
+.direction-btn.active,
+.row-direction-btn.active,
+.payment-method-btn.active {
+    background: var(--ui-primary) !important;
+    border-color: var(--ui-primary) !important;
+    color: var(--ui-text-light) !important;
+}
+.trx-table th {
+    background: var(--ui-table-header-bg) !important;
+    color: var(--ui-text-secondary) !important;
+    border-color: var(--ui-table-border) !important;
+}
+.trx-table td,
+.customer-history-table th,
+.customer-history-table td {
+    border-color: var(--ui-table-border) !important;
+    color: var(--ui-text) !important;
+}
+.trx-table input,
+.trx-table select { background: var(--ui-surface) !important; }
+.trx-add {
+    background: var(--ui-surface) !important;
+    color: var(--ui-primary) !important;
+    border-color: var(--ui-border) !important;
+}
+.trx-error {
+    background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-card-bg)) !important;
+    border-color: color-mix(in srgb, var(--ui-danger) 35%, var(--ui-border)) !important;
+    color: var(--ui-danger) !important;
+}
+
+/* Customers index */
+.customer-page {
+    color: var(--ui-text) !important;
+}
+.customer-title,
+.customer-name {
+    color: var(--ui-text) !important;
+}
+.customer-subtitle,
+.customer-field label,
+.customer-muted {
+    color: var(--ui-text-muted) !important;
+}
+.customer-btn {
+    background: var(--ui-card-bg) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-border) !important;
+}
+.customer-btn:hover { background: var(--ui-table-row-hover) !important; }
+.customer-btn-primary {
+    background: var(--ui-primary) !important;
+    border-color: var(--ui-primary) !important;
+    color: var(--ui-text-light) !important;
+}
+.customer-btn-primary:hover {
+    background: var(--ui-primary-dark) !important;
+    border-color: var(--ui-primary-dark) !important;
+}
+.customer-card {
+    background: var(--ui-card-bg) !important;
+    border-color: var(--ui-card-border) !important;
+    box-shadow: var(--ui-card-shadow) !important;
+}
+.customer-filter {
+    background: var(--ui-table-header-bg) !important;
+    border-color: var(--ui-border) !important;
+}
+.customer-input,
+.customer-select {
+    background: var(--ui-surface) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-border) !important;
+}
+.customer-input:focus,
+.customer-select:focus {
+    border-color: var(--ui-border-focus) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 12%, transparent) !important;
+}
+.customer-table th {
+    background: var(--ui-table-header-bg) !important;
+    color: var(--ui-text-secondary) !important;
+    border-color: var(--ui-table-border-strong) !important;
+}
+.customer-table td {
+    background: var(--ui-surface) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-table-border) !important;
+}
+.customer-table tbody tr:hover { background: var(--ui-table-row-hover) !important; }
+.customer-badge {
+    background: var(--ui-primary-light) !important;
+    color: var(--ui-primary-dark) !important;
+}
+
+/* Keep semantic transaction states readable while still theme-aware. */
+.type-sell { background: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-card-bg)) !important; color: var(--ui-danger) !important; }
+.type-buy { background: color-mix(in srgb, var(--ui-success) 10%, var(--ui-card-bg)) !important; color: var(--ui-success) !important; }
