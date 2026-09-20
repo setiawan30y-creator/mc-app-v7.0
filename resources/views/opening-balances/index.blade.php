@@ -36,7 +36,7 @@
 
         <section class="ob-panel active" data-panel="cash">
             <div class="ob-panel-head"><div><h2>Saldo Awal Rp / Kas</h2><p>Uang tunai fisik yang tersedia saat usaha mulai.</p></div><span class="ob-badge">RUPIAH</span></div>
-            <div class="ob-cash-grid"><label>Saldo Kas Awal (Rp)<input id="cashAmount" name="cash_amount" type="number" min="0" step="0.01" placeholder="0"></label><label>Keterangan<input name="cash_notes" type="text" placeholder="Contoh: Kas operasional awal"></label></div>
+            <div class="ob-cash-grid"><label>Saldo Kas Awal (Rp)<input id="cashAmount" name="cash_amount" type="number" min="0" step="0.01" value="{{ old('cash_amount', $balances->where('balance_type', 'cash')->sum('amount_rp')) }}" placeholder="0"></label><label>Keterangan<input name="cash_notes" type="text" value="{{ old('cash_notes', optional($balances->firstWhere('balance_type', 'cash'))->notes) }}" placeholder="Contoh: Kas operasional awal"></label></div>
             <div class="ob-example">Saldo ini menjadi titik awal rekonsiliasi kas dan Closing Rp. Bukan transaksi penjualan/pembelian.</div>
         </section>
 
@@ -66,9 +66,19 @@
 <script>
 (function(){
  const tabs=document.querySelectorAll('.ob-tabs button'), panels=document.querySelectorAll('.ob-panel');
+ const bankRows=document.getElementById('bankRows'), forexRows=document.getElementById('forexRows');
+ let bi=0, fi=0;
+ const savedBalances=@json($balances->map(fn($b)=>[
+   'balance_type'=>$b->balance_type,
+   'bank_account_id'=>$b->bank_account_id,
+   'currency_denomination_id'=>$b->currency_denomination_id,
+   'quantity'=>$b->quantity,
+   'rate'=>$b->rate,
+   'amount_rp'=>$b->amount_rp,
+   'notes'=>$b->notes,
+ ])->values());
  tabs.forEach(btn=>btn.addEventListener('click',()=>{tabs.forEach(x=>x.classList.remove('active'));panels.forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelector('[data-panel="'+btn.dataset.tab+'"]').classList.add('active')}));
- let bi=0,fi=0; const bankRows=document.getElementById('bankRows'), forexRows=document.getElementById('forexRows');
- function add(tpl,wrap,index){wrap.insertAdjacentHTML('beforeend',document.getElementById(tpl).innerHTML.replaceAll('__INDEX__',index)); updateSummary();}
+ function add(tpl,wrap,index){wrap.insertAdjacentHTML('beforeend',document.getElementById(tpl).innerHTML.replaceAll('__INDEX__',index));return wrap.lastElementChild;}
  document.getElementById('addBank').addEventListener('click',()=>add('bankTemplate',bankRows,bi++));
  document.getElementById('addForex').addEventListener('click',()=>add('forexTemplate',forexRows,fi++));
  function money(v){return 'Rp '+new Intl.NumberFormat('id-ID',{minimumFractionDigits:0,maximumFractionDigits:2}).format(v||0)}
@@ -81,9 +91,17 @@
    document.getElementById('barCash').style.width=pct(cash)+'%';document.getElementById('barBank').style.width=pct(bank)+'%';document.getElementById('barForex').style.width=pct(forex)+'%';
    document.getElementById('legendCash').textContent=Math.round(pct(cash))+'%';document.getElementById('legendBank').textContent=Math.round(pct(bank))+'%';document.getElementById('legendForex').textContent=Math.round(pct(forex))+'%';
  }
+ function restoreBank(item){const tr=add('bankTemplate',bankRows,bi++);const select=tr.querySelector('select');const amount=tr.querySelector('.bank-amount');const notes=tr.querySelector('input[name$="[notes]"]');if(select)select.value=item.bank_account_id??'';if(amount)amount.value=item.amount_rp??'';if(notes)notes.value=item.notes??'';}
+ function restoreForex(item){const tr=add('forexTemplate',forexRows,fi++);const select=tr.querySelector('select');const qty=tr.querySelector('.fx-qty');const rate=tr.querySelector('.fx-rate');if(select)select.value=item.currency_denomination_id??'';if(qty)qty.value=item.quantity??'';if(rate)rate.value=item.rate??'';const rp=tr.querySelector('.fx-rp');if(rp)rp.textContent=money((parseFloat(item.quantity)||0)*(parseFloat(item.rate)||0));}
  document.addEventListener('click',e=>{if(e.target.matches('.remove')){e.target.closest('tr').remove();updateSummary()}});
  document.addEventListener('input',e=>{if(e.target.matches('.fx-qty,.fx-rate')){const tr=e.target.closest('tr'),q=parseFloat(tr.querySelector('.fx-qty').value)||0,r=parseFloat(tr.querySelector('.fx-rate').value)||0;tr.querySelector('.fx-rp').textContent=money(q*r)}if(e.target.matches('.fx-qty,.fx-rate,.bank-amount,#cashAmount'))updateSummary()});
- add('bankTemplate',bankRows,bi++); add('forexTemplate',forexRows,fi++); updateSummary();
+ const savedCash=savedBalances.find(x=>x.balance_type==='cash');
+ if(savedCash){const cash=document.getElementById('cashAmount');if(cash)cash.value=savedCash.amount_rp??'';const notes=document.querySelector('input[name="cash_notes"]');if(notes)notes.value=savedCash.notes??'';}
+ const savedBanks=savedBalances.filter(x=>x.balance_type==='bank');
+ const savedForex=savedBalances.filter(x=>x.balance_type==='forex');
+ if(savedBanks.length){savedBanks.forEach(restoreBank)}else{add('bankTemplate',bankRows,bi++);}
+ if(savedForex.length){savedForex.forEach(restoreForex)}else{add('forexTemplate',forexRows,fi++);}
+ updateSummary();
 })();
 </script>
 @endsection
