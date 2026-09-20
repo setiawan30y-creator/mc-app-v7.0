@@ -17,12 +17,16 @@ class OpeningBalanceController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
-        $date = $request->date('date')?->toDateString() ?? Carbon::today()->toDateString();
+        $timezone = config('app.timezone', 'Asia/Jakarta');
+        $date = $request->date('date')?->toDateString() ?? Carbon::now($timezone)->toDateString();
+
+        $startOfDay = Carbon::parse($date, $timezone)->startOfDay()->utc();
+        $endOfDay = Carbon::parse($date, $timezone)->endOfDay()->utc();
 
         $balances = OpeningBalance::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('balance_date', $date)
+            ->whereBetween('balance_date', [$startOfDay, $endOfDay])
             ->where('status', 'finalized')
             ->with(['currency', 'bankAccount', 'variant.currency', 'denomination'])
             ->orderBy('balance_type')
@@ -61,11 +65,15 @@ class OpeningBalanceController extends Controller
         ]);
 
         DB::transaction(function () use ($validated, $user) {
-            $date = $validated['balance_date'];
+            $timezone = config('app.timezone', 'Asia/Jakarta');
+            $localDate = Carbon::parse($validated['balance_date'], $timezone);
+            $date = $localDate->copy()->startOfDay();
+            $startOfDay = $date->copy()->utc();
+            $endOfDay = $date->copy()->endOfDay()->utc();
 
             OpeningBalance::where('tenant_id', $user->tenant_id)
                 ->where('branch_id', $user->branch_id)
-                ->whereDate('balance_date', $date)
+                ->whereBetween('balance_date', [$startOfDay, $endOfDay])
                 ->delete();
 
             $cash = (float) ($validated['cash_amount'] ?? 0);
