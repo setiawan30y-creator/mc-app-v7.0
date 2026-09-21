@@ -66,12 +66,11 @@ class DashboardController extends Controller
             }
         }
 
-        // Dashboard balance must represent the current bank position, not only today's mutation.
-        // Start from the latest finalized opening balance and include every mutation after that opening.
+        // Bank position: opening balance plus all posted bank mutations from the opening date.
         $bankMutations = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->when($openingDate, fn ($q) => $q->whereDate('transaction_date', '>=', $openingDate))
+            ->when($openingDate, fn ($q) => $q->whereDate('transaction_date', '>=', Carbon::parse($openingDate)->toDateString()))
             ->where('transaction_date', '<=', $now)
             ->get(['credit', 'debit', 'transaction_date']);
 
@@ -87,21 +86,22 @@ class DashboardController extends Controller
         $todayBankDebit = (float) $todayBankMutations->sum('debit');
         $todayBankNet = $todayBankCredit - $todayBankDebit;
 
-        $forexBalance = $openingForex + $purchase - $sales;
+        // Cash position must use every posted cash movement since the latest opening,
+        // not only movements created today.
+        $cashMovements = CashMovement::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->where('branch_id', $user->branch_id)
+            ->when($openingDate, fn ($q) => $q->whereDate('created_at', '>=', Carbon::parse($openingDate)->toDateString()))
+            ->where('created_at', '<=', $now)
+            ->get(['direction', 'amount', 'created_at']);
 
-        $cashIn = (float) CashMovement::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->whereDate('created_at', $today->toDateString())
-            ->where('direction', 'in')
-            ->sum('amount');
-        $cashOut = (float) CashMovement::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->whereDate('created_at', $today->toDateString())
-            ->where('direction', 'out')
-            ->sum('amount');
+        $cashIn = (float) $cashMovements->where('direction', 'in')->sum('amount');
+        $cashOut = (float) $cashMovements->where('direction', 'out')->sum('amount');
         $cashBalance = $openingCash + $cashIn - $cashOut;
+
+        // Forex position is shown in its Rp valuation, using today's completed
+        // transaction flow on top of the latest opening valuation.
+        $forexBalance = $openingForex + $purchase - $sales;
         $gross = $cashBalance + $bankBalance + $forexBalance;
 
         $closing = CashClosing::query()
