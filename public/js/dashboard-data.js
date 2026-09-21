@@ -2,14 +2,18 @@
     const dashboard = document.querySelector('.dashboard');
     if (!dashboard) return;
 
-    const money = (value) => {
-        const n = Number(value ?? 0);
-        return 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n);
-    };
-
+    const money = (value) => 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(Number(value ?? 0));
     const cards = () => [...dashboard.querySelectorAll('.finance-grid .finance-card')];
     const findCard = (label) => cards().find(card => (card.querySelector('.finance-label')?.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase() === label.toLowerCase());
     const bankCard = () => dashboard.querySelector('[data-dashboard-bank-card]') || findCard('Mutasi Bank') || cards()[2] || null;
+
+    const injectBankStyles = () => {
+        if (document.getElementById('dashboard-bank-card-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'dashboard-bank-card-styles';
+        style.textContent = `.dashboard-bank-accounts{margin-top:0}.bank-account-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px}.bank-account-card{border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fff;min-width:0}.bank-account-top{display:flex;align-items:center;gap:10px}.bank-account-icon{width:34px;height:34px;border-radius:9px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px}.bank-account-name{font-size:11px;font-weight:800;color:#111827}.bank-account-number{font-size:9px;color:#9ca3af;margin-top:3px}.bank-account-holder{font-size:9px;color:#64748b;margin-top:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bank-account-balance{font-size:18px;font-weight:850;color:#0f172a;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bank-account-meta{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:8px;color:#64748b}.bank-account-empty{padding:22px 16px;font-size:10px;color:#94a3b8}.bank-account-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07)}@media(max-width:950px){.bank-account-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.bank-account-grid{grid-template-columns:1fr}}`;
+        document.head.appendChild(style);
+    };
 
     const writeCard = (card, value, meta) => {
         if (!card) return;
@@ -18,7 +22,6 @@
         const metaEl = card.querySelector('.finance-meta');
         if (metaEl) metaEl.innerHTML = meta;
     };
-
     const setCard = (label, value, meta = 'Terintegrasi') => {
         const card = findCard(label);
         if (!card) return;
@@ -26,7 +29,6 @@
         const metaEl = card.querySelector('.finance-meta');
         if (metaEl) metaEl.innerHTML = `<span class="finance-neutral">${meta}</span>`;
     };
-
     const ensureFinanceCard = (label, icon, metaLeft, metaRight) => {
         let card = findCard(label);
         if (card) return card;
@@ -38,7 +40,6 @@
         grid.appendChild(card);
         return card;
     };
-
     const ensureCashRpCard = () => ensureFinanceCard('Cash Rp', 'Rp', 'Saldo tersedia', 'Kas fisik');
 
     const ensurePositionPanel = () => {
@@ -53,14 +54,13 @@
         mainGrid.appendChild(panel);
         return panel;
     };
-
-    const setPosition = (position) => {
+    const setPosition = (p) => {
         const panel = ensurePositionPanel();
         if (!panel) return;
-        panel.querySelector('[data-dashboard-position="cash"]')?.replaceChildren(document.createTextNode(money(position.cash)));
-        panel.querySelector('[data-dashboard-position="bank"]')?.replaceChildren(document.createTextNode(money(position.bank)));
-        panel.querySelector('[data-dashboard-position="forex"]')?.replaceChildren(document.createTextNode(money(position.forex)));
-        panel.querySelector('[data-dashboard-position="gross"]')?.replaceChildren(document.createTextNode(money(position.gross)));
+        panel.querySelector('[data-dashboard-position="cash"]')?.replaceChildren(document.createTextNode(money(p.cash)));
+        panel.querySelector('[data-dashboard-position="bank"]')?.replaceChildren(document.createTextNode(money(p.bank)));
+        panel.querySelector('[data-dashboard-position="forex"]')?.replaceChildren(document.createTextNode(money(p.forex)));
+        panel.querySelector('[data-dashboard-position="gross"]')?.replaceChildren(document.createTextNode(money(p.gross)));
     };
 
     const ensureOpeningPanel = () => {
@@ -75,15 +75,14 @@
         sideStack.prepend(panel);
         return panel;
     };
-
-    const setOpening = (opening) => {
+    const setOpening = (o) => {
         const panel = ensureOpeningPanel();
         if (!panel) return;
-        panel.querySelector('[data-dashboard-opening="cash"]')?.replaceChildren(document.createTextNode(money(opening.cash)));
-        panel.querySelector('[data-dashboard-opening="bank"]')?.replaceChildren(document.createTextNode(money(opening.bank)));
-        panel.querySelector('[data-dashboard-opening="forex"]')?.replaceChildren(document.createTextNode(money(opening.forex)));
-        panel.querySelector('[data-dashboard-opening="gross"]')?.replaceChildren(document.createTextNode(money(opening.gross)));
-        panel.querySelector('[data-dashboard-opening="date"]')?.replaceChildren(document.createTextNode(opening.date || 'Belum ada saldo awal'));
+        panel.querySelector('[data-dashboard-opening="cash"]')?.replaceChildren(document.createTextNode(money(o.cash)));
+        panel.querySelector('[data-dashboard-opening="bank"]')?.replaceChildren(document.createTextNode(money(o.bank)));
+        panel.querySelector('[data-dashboard-opening="forex"]')?.replaceChildren(document.createTextNode(money(o.forex)));
+        panel.querySelector('[data-dashboard-opening="gross"]')?.replaceChildren(document.createTextNode(money(o.gross)));
+        panel.querySelector('[data-dashboard-opening="date"]')?.replaceChildren(document.createTextNode(o.date || 'Belum ada saldo awal'));
     };
 
     const ensureBankAccountsPanel = () => {
@@ -94,28 +93,22 @@
         panel = document.createElement('section');
         panel.className = 'dashboard-card dashboard-bank-accounts';
         panel.setAttribute('data-dashboard-bank-accounts', 'true');
-        panel.style.marginTop = '0';
         panel.innerHTML = `<div class="dashboard-card-header"><div><div class="dashboard-card-title">Rekening Bank</div><div class="dashboard-card-subtitle">Saldo berjalan setiap rekening aktif</div></div><div class="dashboard-card-link">Kas &amp; Bank</div></div><div class="bank-account-grid" data-dashboard-bank-account-grid></div>`;
         financeGrid.insertAdjacentElement('afterend', panel);
         return panel;
     };
-
     const renderBankAccounts = (accounts) => {
         const panel = ensureBankAccountsPanel();
         if (!panel) return;
         const grid = panel.querySelector('[data-dashboard-bank-account-grid]');
-        if (!grid) return;
         grid.innerHTML = '';
-        if (!Array.isArray(accounts) || accounts.length === 0) {
-            grid.innerHTML = `<div class="bank-account-empty">Belum ada rekening bank aktif.</div>`;
-            return;
-        }
-        accounts.forEach(account => {
+        if (!accounts.length) { grid.innerHTML = '<div class="bank-account-empty">Belum ada rekening bank aktif.</div>'; return; }
+        accounts.forEach(a => {
             const card = document.createElement('div');
             card.className = 'bank-account-card';
-            const number = String(account.account_number || '');
-            const masked = number.length > 4 ? '•••• ' + number.slice(-4) : number;
-            card.innerHTML = `<div class="bank-account-top"><div class="bank-account-icon">🏦</div><div><div class="bank-account-name">${account.bank_name || 'Bank'}</div><div class="bank-account-number">${masked}</div></div></div><div class="bank-account-holder">${account.account_name || '-'}</div><div class="bank-account-balance">${money(account.balance)}</div><div class="bank-account-meta"><span>${account.currency || 'IDR'}</span><span>Credit ${money(account.credit)} · Debit ${money(account.debit)}</span></div>`;
+            const n = String(a.account_number || '');
+            const masked = n.length > 4 ? '•••• ' + n.slice(-4) : n;
+            card.innerHTML = `<div class="bank-account-top"><div class="bank-account-icon">🏦</div><div><div class="bank-account-name">${a.bank_name || 'Bank'}</div><div class="bank-account-number">${masked}</div></div></div><div class="bank-account-holder">${a.account_name || '-'}</div><div class="bank-account-balance">${money(a.balance)}</div><div class="bank-account-meta"><span>${a.currency || 'IDR'}</span><span>Credit ${money(a.credit)} · Debit ${money(a.debit)}</span></div>`;
             grid.appendChild(card);
         });
     };
@@ -123,30 +116,19 @@
     const load = async () => {
         try {
             const response = await fetch('/dashboard/data?_=' + Date.now(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' });
-            if (!response.ok) {
-                writeCard(bankCard(), 0, '<span class="finance-negative">Data Dashboard tidak tersedia</span>');
-                return;
-            }
+            if (!response.ok) { writeCard(bankCard(), 0, '<span class="finance-negative">Data Dashboard tidak tersedia</span>'); return; }
             const data = await response.json();
-            const position = data.position || {};
-            const opening = data.opening || {};
-            const today = data.today || {};
-
+            const p = data.position || {}, o = data.opening || {}, t = data.today || {};
+            injectBankStyles();
             ensureCashRpCard();
-            writeCard(bankCard(), position.bank ?? 0, `<span class="finance-neutral">Credit ${money(today.bank_credit)} · Debit ${money(today.bank_debit)}</span>`);
-            setCard('Pembelian', today.purchase ?? 0, `${today.transaction_count ?? 0} transaksi hari ini`);
-            setCard('Penjualan', today.sales ?? 0, `${today.transaction_count ?? 0} transaksi hari ini`);
-            setCard('Pengeluaran', today.cash_out ?? 0, 'Cash out hari ini');
-            setCard('Cash Rp', position.cash ?? 0, 'Saldo tersedia · Kas fisik');
-            setPosition(position);
-            setOpening(opening);
-            renderBankAccounts(data.bank_accounts || []);
-        } catch (error) {
-            console.warn('Dashboard financial sync failed', error);
-            writeCard(bankCard(), 0, '<span class="finance-negative">Gagal mengambil saldo bank</span>');
-        }
+            writeCard(bankCard(), p.bank ?? 0, `<span class="finance-neutral">Credit ${money(t.bank_credit)} · Debit ${money(t.bank_debit)}</span>`);
+            setCard('Pembelian', t.purchase ?? 0, `${t.transaction_count ?? 0} transaksi hari ini`);
+            setCard('Penjualan', t.sales ?? 0, `${t.transaction_count ?? 0} transaksi hari ini`);
+            setCard('Pengeluaran', t.cash_out ?? 0, 'Cash out hari ini');
+            setCard('Cash Rp', p.cash ?? 0, 'Saldo tersedia · Kas fisik');
+            setPosition(p); setOpening(o); renderBankAccounts(Array.isArray(data.bank_accounts) ? data.bank_accounts : []);
+        } catch (error) { console.warn('Dashboard financial sync failed', error); writeCard(bankCard(), 0, '<span class="finance-negative">Gagal mengambil saldo bank</span>'); }
     };
-
     load();
     setInterval(load, 60000);
 })();
