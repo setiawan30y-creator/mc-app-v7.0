@@ -7,8 +7,7 @@
         return 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n);
     };
 
-    const cards = [...dashboard.querySelectorAll('.finance-card')];
-    const cardByLabel = (label) => cards.find(card =>
+    const cardByLabel = (label) => [...dashboard.querySelectorAll('.finance-card')].find(card =>
         card.querySelector('.finance-label')?.textContent.trim().toLowerCase() === label.toLowerCase()
     );
 
@@ -19,6 +18,29 @@
         const metaEl = card.querySelector('.finance-meta');
         if (valueEl) valueEl.textContent = typeof value === 'string' ? value : money(value);
         if (metaEl) metaEl.innerHTML = `<span class="finance-neutral">${meta}</span>`;
+    };
+
+    const ensureCashRpCard = () => {
+        let card = cardByLabel('Cash Rp');
+        if (card) return card;
+
+        const grid = dashboard.querySelector('.finance-grid');
+        if (!grid) return null;
+
+        card = document.createElement('div');
+        card.className = 'finance-card';
+        card.setAttribute('data-dashboard-cash-rp', 'true');
+        card.innerHTML = `
+            <div class="finance-icon">Rp</div>
+            <div class="finance-label">Cash Rp</div>
+            <div class="finance-value">Rp 0</div>
+            <div class="finance-meta">
+                <span class="finance-positive">Saldo tersedia</span>
+                <span class="finance-neutral">Kas fisik</span>
+            </div>
+        `;
+        grid.appendChild(card);
+        return card;
     };
 
     const ensureOpeningPanel = () => {
@@ -92,6 +114,8 @@
             if (!response.ok) return;
             const data = await response.json();
 
+            ensureCashRpCard();
+
             setCard('Pembelian', data.today.purchase, `${data.today.transaction_count} transaksi hari ini`);
             setCard('Penjualan', data.today.sales, `${data.today.transaction_count} transaksi hari ini`);
             setCard(
@@ -99,8 +123,9 @@
                 data.position.bank,
                 `Saldo awal ${money(data.opening.bank)} · Mutasi ${money(data.today.bank_net)}`
             );
-
             setCard('Pengeluaran', data.today.cash_out, 'Cash out hari ini');
+            setCard('Cash Rp', data.position.cash, 'Saldo tersedia · Kas fisik');
+
             if (data.closing) {
                 setCard('Selisih Rp', data.closing.difference, data.closing.balanced ? 'Balanced' : 'Tidak seimbang');
             }
