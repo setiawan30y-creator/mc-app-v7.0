@@ -21,13 +21,15 @@ class DashboardController extends Controller
     public function data(Request $request): JsonResponse
     {
         $user = $request->user();
-        $today = Carbon::today();
+        $timezone = config('app.timezone', 'Asia/Jakarta');
+        $today = Carbon::now($timezone)->startOfDay();
+        $now = Carbon::now($timezone);
 
         $openingDate = OpeningBalance::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('status', 'finalized')
-            ->where('balance_date', '<=', $today->toDateString())
+            ->whereDate('balance_date', '<=', $today->toDateString())
             ->max('balance_date');
 
         $opening = $openingDate
@@ -35,7 +37,7 @@ class DashboardController extends Controller
                 ->where('tenant_id', $user->tenant_id)
                 ->where('branch_id', $user->branch_id)
                 ->where('status', 'finalized')
-                ->where('balance_date', $openingDate)
+                ->whereDate('balance_date', $openingDate)
                 ->get()
             : collect();
 
@@ -46,7 +48,7 @@ class DashboardController extends Controller
         $transactions = McTransaction::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('transaction_date', $today)
+            ->whereDate('transaction_date', $today->toDateString())
             ->whereIn('status', ['paid', 'completed'])
             ->with('items')
             ->get();
@@ -64,39 +66,48 @@ class DashboardController extends Controller
             }
         }
 
-        $bankCredit = (float) BankMutation::query()
+        // Dashboard balance must represent the current bank position, not only today's mutation.
+        // Start from the latest finalized opening balance and include every mutation after that opening.
+        $bankMutations = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('transaction_date', $today)
-            ->sum('credit');
-        $bankDebit = (float) BankMutation::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->whereDate('transaction_date', $today)
-            ->sum('debit');
+            ->when($openingDate, fn ($q) => $q->whereDate('transaction_date', '>=', $openingDate))
+            ->where('transaction_date', '<=', $now)
+            ->get(['credit', 'debit', 'transaction_date']);
+
+        $bankCredit = (float) $bankMutations->sum('credit');
+        $bankDebit = (float) $bankMutations->sum('debit');
         $bankNet = $bankCredit - $bankDebit;
+        $bankBalance = $openingBank + $bankNet;
+
+        $todayBankMutations = $bankMutations->filter(
+            fn ($mutation) => Carbon::parse($mutation->transaction_date, $timezone)->isSameDay($today)
+        );
+        $todayBankCredit = (float) $todayBankMutations->sum('credit');
+        $todayBankDebit = (float) $todayBankMutations->sum('debit');
+        $todayBankNet = $todayBankCredit - $todayBankDebit;
 
         $forexBalance = $openingForex + $purchase - $sales;
 
         $cashIn = (float) CashMovement::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('created_at', $today)
+            ->whereDate('created_at', $today->toDateString())
             ->where('direction', 'in')
             ->sum('amount');
         $cashOut = (float) CashMovement::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('created_at', $today)
+            ->whereDate('created_at', $today->toDateString())
             ->where('direction', 'out')
             ->sum('amount');
         $cashBalance = $openingCash + $cashIn - $cashOut;
-        $gross = $cashBalance + $openingBank + $bankNet + $forexBalance;
+        $gross = $cashBalance + $bankBalance + $forexBalance;
 
         $closing = CashClosing::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->whereDate('business_date', $today)
+            ->whereDate('business_date', $today->toDateString())
             ->latest('created_at')
             ->first();
 
@@ -112,16 +123,16 @@ class DashboardController extends Controller
             'today' => [
                 'purchase' => $purchase,
                 'sales' => $sales,
-                'bank_credit' => $bankCredit,
-                'bank_debit' => $bankDebit,
-                'bank_net' => $bankNet,
+                'bank_credit' => $todayBankCredit,
+                'bank_debit' => $todayBankDebit,
+                'bank_net' => $todayBankNet,
                 'cash_in' => $cashIn,
                 'cash_out' => $cashOut,
                 'transaction_count' => $transactions->count(),
             ],
             'position' => [
                 'cash' => $cashBalance,
-                'bank' => $openingBank + $bankNet,
+                'bank' => $bankBalance,
                 'forex' => $forexBalance,
                 'gross' => $gross,
             ],
