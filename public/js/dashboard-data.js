@@ -118,11 +118,15 @@
 
             setCard('Pembelian', data.today.purchase, `${data.today.transaction_count} transaksi hari ini`);
             setCard('Penjualan', data.today.sales, `${data.today.transaction_count} transaksi hari ini`);
+
+            // Kartu Mutasi Bank menampilkan saldo rekening saat ini.
+            // Nilai = Saldo Awal Bank + Credit - Debit.
             setCard(
                 'Mutasi Bank',
                 data.position.bank,
-                `Saldo awal ${money(data.opening.bank)} · Mutasi ${money(data.today.bank_net)}`
+                `Saldo awal ${money(data.opening.bank)} · Credit ${money(data.today.bank_credit)} · Debit ${money(data.today.bank_debit)}`
             );
+
             setCard('Pengeluaran', data.today.cash_out, 'Cash out hari ini');
             setCard('Cash Rp', data.position.cash, 'Saldo tersedia · Kas fisik');
 
