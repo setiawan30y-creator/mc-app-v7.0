@@ -14,135 +14,67 @@ use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
-    public function index()
-    {
-        return view('dashboard');
-    }
+    public function index() { return view('dashboard'); }
 
     public function data(Request $request): JsonResponse
     {
         $user = $request->user();
-        $timezone = config('app.timezone', 'Asia/Jakarta');
-        $today = Carbon::now($timezone)->startOfDay();
-        $now = Carbon::now($timezone);
+        $tz = config('app.timezone', 'Asia/Jakarta');
+        $today = Carbon::now($tz)->startOfDay();
+        $now = Carbon::now($tz);
 
-        $openingDate = OpeningBalance::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->where('status', 'finalized')
-            ->whereDate('balance_date', '<=', $today->toDateString())
-            ->max('balance_date');
-
-        $opening = $openingDate ? OpeningBalance::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->where('status', 'finalized')
-            ->whereDate('balance_date', $openingDate)
-            ->get() : collect();
-
+        $openingDate = OpeningBalance::where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
+            ->where('status', 'finalized')->whereDate('balance_date', '<=', $today->toDateString())->max('balance_date');
+        $opening = $openingDate ? OpeningBalance::where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
+            ->where('status', 'finalized')->whereDate('balance_date', $openingDate)->get() : collect();
         $openingCash = (float) $opening->where('balance_type', 'cash')->sum('amount_rp');
         $openingBank = (float) $opening->where('balance_type', 'bank')->sum('amount_rp');
         $openingForex = (float) $opening->where('balance_type', 'forex')->sum('amount_rp');
 
-        $transactions = McTransaction::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->whereDate('transaction_date', $today->toDateString())
-            ->whereIn('status', ['paid', 'completed'])
-            ->with('items')->get();
-
-        $purchase = 0.0;
-        $sales = 0.0;
-        foreach ($transactions as $transaction) {
-            foreach ($transaction->items as $item) {
-                $amount = (float) $item->subtotal;
-                if ($item->direction === 'buy') $purchase += $amount;
-                elseif ($item->direction === 'sell') $sales += $amount;
-            }
+        $transactions = McTransaction::where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
+            ->whereDate('transaction_date', $today->toDateString())->whereIn('status', ['paid', 'completed'])->with('items')->get();
+        $purchase = 0.0; $sales = 0.0;
+        foreach ($transactions as $t) foreach ($t->items as $item) {
+            if ($item->direction === 'buy') $purchase += (float) $item->subtotal;
+            elseif ($item->direction === 'sell') $sales += (float) $item->subtotal;
         }
 
-        // BANK SOURCE OF TRUTH: bank_accounts.opening_balance + all bank mutations.
-        // OpeningBalanceController writes the saved Saldo Awal Bank into this field.
-        $bankAccounts = BankAccount::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->where('branch_id', $user->branch_id)
-            ->with(['mutations' => function ($query) use ($now) {
-                $query->where('transaction_date', '<=', $now)
-                    ->orderBy('transaction_date')->orderBy('created_at');
-            }])
-            ->orderBy('bank_name')->orderBy('account_number')->get();
-
-        $accountOpeningBank = (float) $bankAccounts->sum(fn ($account) => (float) $account->opening_balance);
-        $bankBaseline = $accountOpeningBank > 0 ? $accountOpeningBank : $openingBank;
-        $bankBalance = $bankBaseline;
-        $bankCredit = 0.0;
-        $bankDebit = 0.0;
-        $todayBankCredit = 0.0;
-        $todayBankDebit = 0.0;
-        $bankMutationCount = 0;
-
-        foreach ($bankAccounts as $account) {
-            foreach ($account->mutations as $mutation) {
-                $bankMutationCount++;
-                $credit = (float) $mutation->credit;
-                $debit = (float) $mutation->debit;
-                $bankCredit += $credit;
-                $bankDebit += $debit;
-                $bankBalance += $credit - $debit;
-                $mutationDate = Carbon::parse($mutation->transaction_date, $timezone);
-                if ($mutationDate->isSameDay($today)) {
-                    $todayBankCredit += $credit;
-                    $todayBankDebit += $debit;
-                }
+        $accounts = BankAccount::where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
+            ->where('is_active', true)->with(['currency:id,code,name', 'mutations'])->orderBy('bank_name')->orderBy('account_number')->get();
+        $bankCards = $accounts->map(function ($a) use ($tz, $today) {
+            $balance = (float) $a->opening_balance; $credit = 0.0; $debit = 0.0; $todayCredit = 0.0; $todayDebit = 0.0;
+            foreach ($a->mutations as $m) {
+                $c = (float) $m->credit; $d = (float) $m->debit; $balance += $c - $d; $credit += $c; $debit += $d;
+                $md = Carbon::parse($m->transaction_date, $tz);
+                if ($md->isSameDay($today)) { $todayCredit += $c; $todayDebit += $d; }
             }
+            return ['id'=>(string)$a->id,'bank_name'=>$a->bank_name,'account_name'=>$a->account_name,'account_number'=>$a->account_number,'currency'=>$a->currency?->code ?? 'IDR','currency_name'=>$a->currency?->name ?? 'Rupiah','opening_balance'=>(float)$a->opening_balance,'credit'=>$credit,'debit'=>$debit,'today_credit'=>$todayCredit,'today_debit'=>$todayDebit,'balance'=>$balance];
+        })->values();
+        $bankBalance = (float) $bankCards->sum('balance');
+        $bankCredit = (float) $bankCards->sum('credit');
+        $bankDebit = (float) $bankCards->sum('debit');
+        $todayBankCredit = (float) $bankCards->sum('today_credit');
+        $todayBankDebit = (float) $bankCards->sum('today_debit');
+
+        $payments = McTransactionPayment::where('payment_method','transfer')->where('payment_status','confirmed')->whereNotNull('bank_account_id')
+            ->where('paid_at','<=',$now)->whereHas('transaction', fn($q)=>$q->where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id))
+            ->with('settlement:id,direction')->get(['id','settlement_id','amount','paid_at','bank_account_id','bank_mutation_id']);
+        foreach ($payments as $p) {
+            if ($p->bank_mutation_id || !$p->settlement) continue;
+            $i = $bankCards->search(fn($a)=>(string)$a['id']===(string)$p->bank_account_id); if ($i === false) continue;
+            $amount=(float)$p->amount; $credit=$p->settlement->direction==='customer_pays';
+            $bankCards[$i]['balance'] += $credit ? $amount : -$amount;
+            $bankCards[$i][$credit?'credit':'debit'] += $amount;
+            if ($p->paid_at && Carbon::parse($p->paid_at,$tz)->isSameDay($today)) $bankCards[$i][$credit?'today_credit':'today_debit'] += $amount;
         }
+        $bankBalance=(float)$bankCards->sum('balance'); $bankCredit=(float)$bankCards->sum('credit'); $bankDebit=(float)$bankCards->sum('debit');
+        $todayBankCredit=(float)$bankCards->sum('today_credit'); $todayBankDebit=(float)$bankCards->sum('today_debit');
 
-        // Fallback for confirmed transfers that have no BankMutation yet.
-        $transferPayments = McTransactionPayment::query()
-            ->where('payment_method', 'transfer')
-            ->where('payment_status', 'confirmed')
-            ->whereNotNull('bank_account_id')
-            ->where('paid_at', '<=', $now)
-            ->whereHas('transaction', function ($q) use ($user, $openingDate) {
-                $q->where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
-                    ->when($openingDate, fn ($query) => $query->whereDate('transaction_date', '>=', $openingDate));
-            })
-            ->with('settlement:id,direction')
-            ->get(['id', 'settlement_id', 'amount', 'paid_at', 'bank_mutation_id']);
+        $cashMovements=CashMovement::where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)->get(['direction','amount','created_at']);
+        $cashIn=(float)$cashMovements->where('direction','in')->sum('amount'); $cashOut=(float)$cashMovements->where('direction','out')->sum('amount');
+        $cashBalance=$openingCash+$cashIn-$cashOut; $forexBalance=$openingForex+$purchase-$sales; $gross=$cashBalance+$bankBalance+$forexBalance;
+        $closing=CashClosing::where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)->whereDate('business_date',$today->toDateString())->latest('created_at')->first();
 
-        foreach ($transferPayments as $payment) {
-            if ($payment->bank_mutation_id || !$payment->settlement) continue;
-            $amount = (float) $payment->amount;
-            $paymentDate = $payment->paid_at ? Carbon::parse($payment->paid_at, $timezone) : null;
-            if ($payment->settlement->direction === 'customer_pays') {
-                $bankBalance += $amount; $bankCredit += $amount;
-                if ($paymentDate?->isSameDay($today)) $todayBankCredit += $amount;
-            } elseif ($payment->settlement->direction === 'customer_receives') {
-                $bankBalance -= $amount; $bankDebit += $amount;
-                if ($paymentDate?->isSameDay($today)) $todayBankDebit += $amount;
-            }
-        }
-
-        $cashMovements = CashMovement::query()
-            ->where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
-            ->when($openingDate, fn ($q) => $q->where('created_at', '>=', Carbon::parse($openingDate, $timezone)->startOfDay()))
-            ->where('created_at', '<=', $now)->get(['direction', 'amount', 'created_at']);
-
-        $cashIn = (float) $cashMovements->where('direction', 'in')->sum('amount');
-        $cashOut = (float) $cashMovements->where('direction', 'out')->sum('amount');
-        $cashBalance = $openingCash + $cashIn - $cashOut;
-        $forexBalance = $openingForex + $purchase - $sales;
-        $gross = $cashBalance + $bankBalance + $forexBalance;
-
-        $closing = CashClosing::query()->where('tenant_id', $user->tenant_id)->where('branch_id', $user->branch_id)
-            ->whereDate('business_date', $today->toDateString())->latest('created_at')->first();
-
-        return response()->json([
-            'date' => $today->toDateString(),
-            'opening' => ['date' => $openingDate, 'cash' => $openingCash, 'bank' => $bankBaseline, 'forex' => $openingForex, 'gross' => $openingCash + $bankBaseline + $openingForex],
-            'today' => ['purchase' => $purchase, 'sales' => $sales, 'bank_credit' => $todayBankCredit, 'bank_debit' => $todayBankDebit, 'bank_net' => $todayBankCredit - $todayBankDebit, 'cash_in' => $cashIn, 'cash_out' => $cashOut, 'transaction_count' => $transactions->count(), 'bank_mutation_count' => $bankMutationCount],
-            'position' => ['cash' => $cashBalance, 'bank' => $bankBalance, 'forex' => $forexBalance, 'gross' => $gross],
-            'closing' => $closing ? ['status' => $closing->status, 'expected_cash' => (float) $closing->expected_cash_amount, 'physical_cash' => (float) $closing->physical_cash_amount, 'difference' => (float) $closing->cash_difference_amount, 'balanced' => $closing->isBalanced()] : null,
-        ]);
+        return response()->json(['date'=>$today->toDateString(),'opening'=>['date'=>$openingDate,'cash'=>$openingCash,'bank'=>$bankBalance,'forex'=>$openingForex,'gross'=>$openingCash+$bankBalance+$openingForex],'today'=>['purchase'=>$purchase,'sales'=>$sales,'bank_credit'=>$todayBankCredit,'bank_debit'=>$todayBankDebit,'bank_net'=>$todayBankCredit-$todayBankDebit,'cash_in'=>$cashIn,'cash_out'=>$cashOut,'transaction_count'=>$transactions->count()],'bank_accounts'=>$bankCards->values(),'position'=>['cash'=>$cashBalance,'bank'=>$bankBalance,'forex'=>$forexBalance,'gross'=>$gross],'closing'=>$closing?['status'=>$closing->status,'expected_cash'=>(float)$closing->expected_cash_amount,'physical_cash'=>(float)$closing->physical_cash_amount,'difference'=>(float)$closing->cash_difference_amount,'balanced'=>$closing->isBalanced()]:null]);
     }
 }
