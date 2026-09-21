@@ -8,34 +8,22 @@
     };
 
     const cards = () => [...dashboard.querySelectorAll('.finance-grid .finance-card')];
-
-    const findCard = (label) => cards().find(card =>
-        (card.querySelector('.finance-label')?.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase() === label.toLowerCase()
-    );
-
-    // Mutasi Bank is a fixed dashboard card. Prefer an explicit marker,
-    // then the text label, then the third finance card used by the dashboard layout.
-    const bankCard = () => {
-        const explicit = dashboard.querySelector('[data-dashboard-bank-card]');
-        if (explicit) return explicit;
-        return findCard('Mutasi Bank') || cards()[2] || null;
-    };
+    const findCard = (label) => cards().find(card => (card.querySelector('.finance-label')?.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase() === label.toLowerCase());
+    const bankCard = () => dashboard.querySelector('[data-dashboard-bank-card]') || findCard('Mutasi Bank') || cards()[2] || null;
 
     const writeCard = (card, value, meta) => {
         if (!card) return;
         card.setAttribute('data-dashboard-bank-card', 'true');
-        const valueEl = card.querySelector('.finance-value');
+        card.querySelector('.finance-value')?.replaceChildren(document.createTextNode(money(value)));
         const metaEl = card.querySelector('.finance-meta');
-        if (valueEl) valueEl.textContent = money(value);
         if (metaEl) metaEl.innerHTML = meta;
     };
 
     const setCard = (label, value, meta = 'Terintegrasi') => {
         const card = findCard(label);
         if (!card) return;
-        const valueEl = card.querySelector('.finance-value');
+        card.querySelector('.finance-value')?.replaceChildren(document.createTextNode(typeof value === 'string' ? value : money(value)));
         const metaEl = card.querySelector('.finance-meta');
-        if (valueEl) valueEl.textContent = typeof value === 'string' ? value : money(value);
         if (metaEl) metaEl.innerHTML = `<span class="finance-neutral">${meta}</span>`;
     };
 
@@ -98,16 +86,45 @@
         panel.querySelector('[data-dashboard-opening="date"]')?.replaceChildren(document.createTextNode(opening.date || 'Belum ada saldo awal'));
     };
 
+    const ensureBankAccountsPanel = () => {
+        let panel = dashboard.querySelector('[data-dashboard-bank-accounts]');
+        if (panel) return panel;
+        const financeGrid = dashboard.querySelector('.finance-grid');
+        if (!financeGrid) return null;
+        panel = document.createElement('section');
+        panel.className = 'dashboard-card dashboard-bank-accounts';
+        panel.setAttribute('data-dashboard-bank-accounts', 'true');
+        panel.style.marginTop = '0';
+        panel.innerHTML = `<div class="dashboard-card-header"><div><div class="dashboard-card-title">Rekening Bank</div><div class="dashboard-card-subtitle">Saldo berjalan setiap rekening aktif</div></div><div class="dashboard-card-link">Kas &amp; Bank</div></div><div class="bank-account-grid" data-dashboard-bank-account-grid></div>`;
+        financeGrid.insertAdjacentElement('afterend', panel);
+        return panel;
+    };
+
+    const renderBankAccounts = (accounts) => {
+        const panel = ensureBankAccountsPanel();
+        if (!panel) return;
+        const grid = panel.querySelector('[data-dashboard-bank-account-grid]');
+        if (!grid) return;
+        grid.innerHTML = '';
+        if (!Array.isArray(accounts) || accounts.length === 0) {
+            grid.innerHTML = `<div class="bank-account-empty">Belum ada rekening bank aktif.</div>`;
+            return;
+        }
+        accounts.forEach(account => {
+            const card = document.createElement('div');
+            card.className = 'bank-account-card';
+            const number = String(account.account_number || '');
+            const masked = number.length > 4 ? '•••• ' + number.slice(-4) : number;
+            card.innerHTML = `<div class="bank-account-top"><div class="bank-account-icon">🏦</div><div><div class="bank-account-name">${account.bank_name || 'Bank'}</div><div class="bank-account-number">${masked}</div></div></div><div class="bank-account-holder">${account.account_name || '-'}</div><div class="bank-account-balance">${money(account.balance)}</div><div class="bank-account-meta"><span>${account.currency || 'IDR'}</span><span>Credit ${money(account.credit)} · Debit ${money(account.debit)}</span></div>`;
+            grid.appendChild(card);
+        });
+    };
+
     const load = async () => {
-        const bank = bankCard();
         try {
-            const response = await fetch('/dashboard/data?_=' + Date.now(), {
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
+            const response = await fetch('/dashboard/data?_=' + Date.now(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' });
             if (!response.ok) {
-                writeCard(bank, 0, '<span class="finance-negative">Data Dashboard tidak tersedia</span>');
+                writeCard(bankCard(), 0, '<span class="finance-negative">Data Dashboard tidak tersedia</span>');
                 return;
             }
             const data = await response.json();
@@ -116,15 +133,14 @@
             const today = data.today || {};
 
             ensureCashRpCard();
-            const currentBank = Number(position.bank ?? 0);
-            writeCard(bankCard(), currentBank, `<span class="finance-neutral">Saldo awal ${money(opening.bank)} · Credit ${money(today.bank_credit)} · Debit ${money(today.bank_debit)}</span>`);
-
+            writeCard(bankCard(), position.bank ?? 0, `<span class="finance-neutral">Credit ${money(today.bank_credit)} · Debit ${money(today.bank_debit)}</span>`);
             setCard('Pembelian', today.purchase ?? 0, `${today.transaction_count ?? 0} transaksi hari ini`);
             setCard('Penjualan', today.sales ?? 0, `${today.transaction_count ?? 0} transaksi hari ini`);
             setCard('Pengeluaran', today.cash_out ?? 0, 'Cash out hari ini');
             setCard('Cash Rp', position.cash ?? 0, 'Saldo tersedia · Kas fisik');
             setPosition(position);
             setOpening(opening);
+            renderBankAccounts(data.bank_accounts || []);
         } catch (error) {
             console.warn('Dashboard financial sync failed', error);
             writeCard(bankCard(), 0, '<span class="finance-negative">Gagal mengambil saldo bank</span>');
