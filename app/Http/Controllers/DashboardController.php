@@ -71,20 +71,19 @@ class DashboardController extends Controller
             ? Carbon::parse($openingDate, $timezone)->startOfDay()
             : null;
 
-        // Bank ledger already posted by LedgerPostingService.
         $bankMutations = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->when($openingBoundary, fn ($q) => $q->where('transaction_date', '>=', $openingBoundary))
             ->where('transaction_date', '<=', $now)
-            ->get(['id', 'credit', 'debit', 'transaction_date']);
+            ->get(['id', 'bank_account_id', 'credit', 'debit', 'transaction_date']);
 
         $bankCredit = (float) $bankMutations->sum('credit');
         $bankDebit = (float) $bankMutations->sum('debit');
 
-        // Safety net for confirmed transfer payments which were saved successfully
-        // but have not yet been linked to a BankMutation. This makes Dashboard reflect
-        // the transaction immediately and prevents an otherwise silent zero movement.
+        // Payments made by the teller can be confirmed even when the ledger link
+        // was not created (for example, an older transaction). Include only those
+        // transfer payments that still have no BankMutation, so they are not double-counted.
         $unpostedTransfers = McTransactionPayment::query()
             ->where('payment_method', 'transfer')
             ->where('payment_status', 'confirmed')
@@ -104,9 +103,9 @@ class DashboardController extends Controller
             }
 
             if ($payment->settlement->direction === 'customer_pays') {
-                $bankDebit += (float) $payment->amount;
-            } elseif ($payment->settlement->direction === 'customer_receives') {
                 $bankCredit += (float) $payment->amount;
+            } elseif ($payment->settlement->direction === 'customer_receives') {
+                $bankDebit += (float) $payment->amount;
             }
         }
 
@@ -124,9 +123,9 @@ class DashboardController extends Controller
                 continue;
             }
             if ($payment->settlement->direction === 'customer_pays') {
-                $todayBankDebit += (float) $payment->amount;
-            } elseif ($payment->settlement->direction === 'customer_receives') {
                 $todayBankCredit += (float) $payment->amount;
+            } elseif ($payment->settlement->direction === 'customer_receives') {
+                $todayBankDebit += (float) $payment->amount;
             }
         }
 
