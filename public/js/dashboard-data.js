@@ -21,12 +21,65 @@
         if (metaEl) metaEl.innerHTML = `<span class="finance-neutral">${meta}</span>`;
     };
 
-    const setSummary = (label, value) => {
-        const rows = [...dashboard.querySelectorAll('.summary-row')];
-        const row = rows.find(r => r.querySelector('.summary-label')?.textContent.trim().toLowerCase() === label.toLowerCase());
-        if (!row) return;
-        const el = row.querySelector('.summary-value');
-        if (el) el.textContent = money(value);
+    const ensureOpeningPanel = () => {
+        let panel = dashboard.querySelector('[data-dashboard-opening-panel]');
+        if (panel) return panel;
+
+        const sideStack = dashboard.querySelector('.side-stack');
+        if (!sideStack) return null;
+
+        panel = document.createElement('div');
+        panel.className = 'dashboard-card';
+        panel.setAttribute('data-dashboard-opening-panel', 'true');
+        panel.innerHTML = `
+            <div class="dashboard-card-header">
+                <div>
+                    <div class="dashboard-card-title">Saldo Awal</div>
+                    <div class="dashboard-card-subtitle">Saldo opening terakhir yang sudah finalized</div>
+                </div>
+            </div>
+            <div class="summary-box">
+                <div class="summary-row">
+                    <span class="summary-label">Tanggal</span>
+                    <span class="summary-value" data-dashboard-opening="date">Belum ada</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Kas</span>
+                    <span class="summary-value" data-dashboard-opening="cash">Rp 0</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Rekening</span>
+                    <span class="summary-value" data-dashboard-opening="bank">Rp 0</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Valas</span>
+                    <span class="summary-value" data-dashboard-opening="forex">Rp 0</span>
+                </div>
+                <div class="summary-total">
+                    <div class="summary-total-label">Total Saldo Awal</div>
+                    <div class="summary-total-value" data-dashboard-opening="gross">Rp 0</div>
+                </div>
+            </div>
+        `;
+        sideStack.prepend(panel);
+        return panel;
+    };
+
+    const setOpening = (opening) => {
+        const panel = ensureOpeningPanel();
+        if (!panel) return;
+
+        const cash = panel.querySelector('[data-dashboard-opening="cash"]');
+        const bank = panel.querySelector('[data-dashboard-opening="bank"]');
+        const forex = panel.querySelector('[data-dashboard-opening="forex"]');
+        const gross = panel.querySelector('[data-dashboard-opening="gross"]');
+        const date = panel.querySelector('[data-dashboard-opening="date"]');
+
+        if (cash) cash.textContent = money(opening.cash);
+        if (bank) bank.textContent = money(opening.bank);
+        if (forex) forex.textContent = money(opening.forex);
+        if (gross) gross.textContent = money(opening.gross);
+        if (date) date.textContent = opening.date || 'Belum ada saldo awal';
     };
 
     const load = async () => {
@@ -42,26 +95,14 @@
             setCard('Pembelian', data.today.purchase, `${data.today.transaction_count} transaksi hari ini`);
             setCard('Penjualan', data.today.sales, `${data.today.transaction_count} transaksi hari ini`);
             setCard('Mutasi Bank', data.today.bank_net, `Credit ${money(data.today.bank_credit)} · Debit ${money(data.today.bank_debit)}`);
-            setCard('Saldo Kas', data.position.cash, 'Saldo berjalan');
-            setCard('Stok Valas', data.position.forex, 'Saldo berjalan · dari opening + transaksi');
-            setCard('Closing', data.closing ? (data.closing.balanced ? 'BALANCED' : money(data.closing.difference)) : 'Belum Closing', data.closing ? data.closing.status : 'Belum ada closing hari ini');
 
-            const opening = data.opening || {};
-            const openingCash = dashboard.querySelector('[data-dashboard-opening="cash"]');
-            const openingBank = dashboard.querySelector('[data-dashboard-opening="bank"]');
-            const openingForex = dashboard.querySelector('[data-dashboard-opening="forex"]');
-            const openingGross = dashboard.querySelector('[data-dashboard-opening="gross"]');
-            const openingDate = dashboard.querySelector('[data-dashboard-opening="date"]');
+            // Existing Dashboard cards that have a direct backend source.
+            setCard('Pengeluaran', data.today.cash_out, 'Cash out hari ini');
+            if (data.closing) {
+                setCard('Selisih Rp', data.closing.difference, data.closing.balanced ? 'Balanced' : 'Tidak seimbang');
+            }
 
-            if (openingCash) openingCash.textContent = money(opening.cash);
-            if (openingBank) openingBank.textContent = money(opening.bank);
-            if (openingForex) openingForex.textContent = money(opening.forex);
-            if (openingGross) openingGross.textContent = money(opening.gross);
-            if (openingDate) openingDate.textContent = opening.date || 'Belum ada';
-
-            setSummary('Kas', data.position.cash);
-            setSummary('Rekening', data.position.bank);
-            setSummary('Valas', data.position.forex);
+            setOpening(data.opening || {});
 
             const total = dashboard.querySelector('.summary-total-value');
             if (total) total.textContent = money(data.position.gross);
