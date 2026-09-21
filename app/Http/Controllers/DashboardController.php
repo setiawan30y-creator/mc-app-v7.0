@@ -23,15 +23,21 @@ class DashboardController extends Controller
         $user = $request->user();
         $today = Carbon::today();
 
-        $opening = OpeningBalance::query()
+        $openingDate = OpeningBalance::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('status', 'finalized')
-            ->whereDate('balance_date', '<=', $today)
-            ->orderByDesc('balance_date')
-            ->get()
-            ->groupBy('balance_date')
-            ->first() ?? collect();
+            ->where('balance_date', '<=', $today->toDateString())
+            ->max('balance_date');
+
+        $opening = $openingDate
+            ? OpeningBalance::query()
+                ->where('tenant_id', $user->tenant_id)
+                ->where('branch_id', $user->branch_id)
+                ->where('status', 'finalized')
+                ->where('balance_date', $openingDate)
+                ->get()
+            : collect();
 
         $openingCash = (float) $opening->where('balance_type', 'cash')->sum('amount_rp');
         $openingBank = (float) $opening->where('balance_type', 'bank')->sum('amount_rp');
@@ -97,6 +103,7 @@ class DashboardController extends Controller
         return response()->json([
             'date' => $today->toDateString(),
             'opening' => [
+                'date' => $openingDate,
                 'cash' => $openingCash,
                 'bank' => $openingBank,
                 'forex' => $openingForex,
