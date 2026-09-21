@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
-use App\Models\BankMutation;
 use App\Models\CashClosing;
 use App\Models\CashMovement;
 use App\Models\McTransaction;
@@ -72,51 +71,46 @@ class DashboardController extends Controller
             ? Carbon::parse($openingDate, $timezone)->startOfDay()
             : null;
 
+        // Dashboard bank balance uses the finalized opening balance as its baseline.
+        // Bank mutations are then applied on top of that baseline. This keeps the
+        // Mutasi Bank card consistent with the Saldo Awal card.
         $bankAccounts = BankAccount::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->active()
             ->with(['mutations' => function ($query) use ($openingBoundary, $now) {
                 $query->when($openingBoundary, fn ($q) => $q->where('transaction_date', '>=', $openingBoundary))
                     ->where('transaction_date', '<=', $now)
-                    ->orderByDesc('transaction_date')
-                    ->orderByDesc('created_at');
+                    ->orderBy('transaction_date')
+                    ->orderBy('created_at');
             }])
             ->orderBy('bank_name')
             ->orderBy('account_number')
             ->get();
 
-        // The bank card uses the balance ledger per bank account. This is more
-        // reliable than summing only today's mutations: accounts without a new
-        // mutation still retain their opening balance, while accounts with
-        // mutations use the latest ledger balance.
-        $bankBalance = 0.0;
+        $bankBalance = $openingBank;
         $bankCredit = 0.0;
         $bankDebit = 0.0;
         $todayBankCredit = 0.0;
         $todayBankDebit = 0.0;
 
         foreach ($bankAccounts as $account) {
-            $mutations = $account->mutations;
-            $latest = $mutations->first();
-            $bankBalance += $latest
-                ? (float) $latest->balance
-                : (float) $account->opening_balance;
+            foreach ($account->mutations as $mutation) {
+                $credit = (float) $mutation->credit;
+                $debit = (float) $mutation->debit;
+                $bankCredit += $credit;
+                $bankDebit += $debit;
+                $bankBalance += $credit - $debit;
 
-            $bankCredit += (float) $mutations->sum('credit');
-            $bankDebit += (float) $mutations->sum('debit');
-
-            $todayBankCredit += (float) $mutations
-                ->filter(fn ($mutation) => Carbon::parse($mutation->transaction_date, $timezone)->isSameDay($today))
-                ->sum('credit');
-            $todayBankDebit += (float) $mutations
-                ->filter(fn ($mutation) => Carbon::parse($mutation->transaction_date, $timezone)->isSameDay($today))
-                ->sum('debit');
+                $mutationDate = Carbon::parse($mutation->transaction_date, $timezone);
+                if ($mutationDate->isSameDay($today)) {
+                    $todayBankCredit += $credit;
+                    $todayBankDebit += $debit;
+                }
+            }
         }
 
-        // Fallback for confirmed transfer payments that have not yet been linked
-        // to a BankMutation. Once linked, the payment is intentionally ignored
-        // here to prevent double counting.
+        // Fallback for confirmed transfer payments that are not yet linked to a
+        // BankMutation. Linked payments are skipped to prevent double counting.
         $transferPayments = McTransactionPayment::query()
             ->where('payment_method', 'transfer')
             ->where('payment_status', 'confirmed')
@@ -136,22 +130,22 @@ class DashboardController extends Controller
             }
 
             $amount = (float) $payment->amount;
+            $paymentDate = $payment->paid_at ? Carbon::parse($payment->paid_at, $timezone) : null;
+
             if ($payment->settlement->direction === 'customer_pays') {
                 $bankBalance += $amount;
                 $bankCredit += $amount;
-                if ($payment->paid_at && Carbon::parse($payment->paid_at, $timezone)->isSameDay($today)) {
+                if ($paymentDate?->isSameDay($today)) {
                     $todayBankCredit += $amount;
                 }
             } elseif ($payment->settlement->direction === 'customer_receives') {
                 $bankBalance -= $amount;
                 $bankDebit += $amount;
-                if ($payment->paid_at && Carbon::parse($payment->paid_at, $timezone)->isSameDay($today)) {
+                if ($paymentDate?->isSameDay($today)) {
                     $todayBankDebit += $amount;
                 }
             }
         }
-
-        $bankNet = $bankCredit - $bankDebit;
 
         $cashMovements = CashMovement::query()
             ->where('tenant_id', $user->tenant_id)
