@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\McTransaction;
 use App\Models\McTransactionPayment;
 use App\Models\RateSnapshot;
+use App\Services\LedgerPostingService;
 use App\Services\McTransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,7 +44,7 @@ class TransactionController extends Controller
         return response()->json(['customer' => ['id' => $customerModel->id, 'name' => $customerModel->full_name, 'number' => $customerModel->customer_number, 'phone' => $customerModel->phone], 'history' => $history]);
     }
 
-    public function store(Request $request, McTransactionService $transactionService)
+    public function store(Request $request, McTransactionService $transactionService, LedgerPostingService $ledgerPostingService)
     {
         $user = auth()->user();
         $validated = $request->validate([
@@ -60,7 +61,7 @@ class TransactionController extends Controller
             'payer_name' => ['nullable', 'string', 'max:150'], 'payment_notes' => ['nullable', 'string', 'max:2000'],
         ]);
         try {
-            $transaction = DB::transaction(function () use ($validated, $transactionService, $user) {
+            $transaction = DB::transaction(function () use ($validated, $transactionService, $ledgerPostingService, $user) {
                 $transaction = $transactionService->create([
                     'tenant_id' => $user->tenant_id, 'branch_id' => $user->branch_id, 'customer_id' => $validated['customer_id'],
                     'transaction_date' => Carbon::parse($validated['transaction_date']), 'status' => 'pending_payment',
@@ -87,8 +88,14 @@ class TransactionController extends Controller
                         $bank = BankAccount::query()->whereKey($validated['bank_account_id'])->where('tenant_id', $user->tenant_id)->when($user->branch_id, fn ($q) => $q->where('branch_id', $user->branch_id))->active()->first();
                         if (!$bank) throw ValidationException::withMessages(['bank_account_id' => 'Rekening bank tidak ditemukan atau tidak aktif.']);
                     }
-                    if ($cash > 0) $this->createPayment($transaction, $settlement, $idr, 'cash', $cash, $validated, null, $user->id);
-                    if ($transfer > 0) $this->createPayment($transaction, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id'], $user->id);
+                    if ($cash > 0) {
+                        $payment = $this->createPayment($transaction, $settlement, $idr, 'cash', $cash, $validated, null, $user->id);
+                        $ledgerPostingService->postPayment($payment);
+                    }
+                    if ($transfer > 0) {
+                        $payment = $this->createPayment($transaction, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id'], $user->id);
+                        $ledgerPostingService->postPayment($payment);
+                    }
                     $transaction->forceFill(['status' => 'paid', 'settlement_status' => 'paid', 'updated_by' => $user->id])->save();
                 }
                 return $transaction;
