@@ -1206,67 +1206,28 @@
                     <div class="summary-box">
 
                         <div class="summary-row">
-
-                            <span class="summary-label">
-                                Total Transaksi
-                            </span>
-
-                            <span class="summary-value">
-                                42
-                            </span>
-
+                            <span class="summary-label">Saldo Awal Kas</span>
+                            <span class="summary-value" data-dashboard-opening="cash">Rp 0</span>
                         </div>
-
 
                         <div class="summary-row">
-
-                            <span class="summary-label">
-                                Customer
-                            </span>
-
-                            <span class="summary-value">
-                                31
-                            </span>
-
+                            <span class="summary-label">Saldo Awal Rekening</span>
+                            <span class="summary-value" data-dashboard-opening="bank">Rp 0</span>
                         </div>
-
 
                         <div class="summary-row">
-
-                            <span class="summary-label">
-                                Transaksi Selesai
-                            </span>
-
-                            <span class="summary-value">
-                                39
-                            </span>
-
+                            <span class="summary-label">Saldo Awal Valas</span>
+                            <span class="summary-value" data-dashboard-opening="forex">Rp 0</span>
                         </div>
-
 
                         <div class="summary-row">
-
-                            <span class="summary-label">
-                                Menunggu
-                            </span>
-
-                            <span class="summary-value">
-                                3
-                            </span>
-
+                            <span class="summary-label">Tanggal Saldo Awal</span>
+                            <span class="summary-value" data-dashboard-opening="date">Belum ada</span>
                         </div>
-
 
                         <div class="summary-total">
-
-                            <div class="summary-total-label">
-                                Profit Hari Ini
-                            </div>
-
-                            <div class="summary-total-value">
-                                Rp 86.690.000
-                            </div>
-
+                            <div class="summary-total-label">Total Saldo Awal</div>
+                            <div class="summary-total-value" data-dashboard-opening="gross">Rp 0</div>
                         </div>
 
                     </div>
