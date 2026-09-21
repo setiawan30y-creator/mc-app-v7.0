@@ -46,6 +46,19 @@
             setCard('Stok Valas', data.position.forex, 'Saldo berjalan · dari opening + transaksi');
             setCard('Closing', data.closing ? (data.closing.balanced ? 'BALANCED' : money(data.closing.difference)) : 'Belum Closing', data.closing ? data.closing.status : 'Belum ada closing hari ini');
 
+            const opening = data.opening || {};
+            const openingCash = dashboard.querySelector('[data-dashboard-opening="cash"]');
+            const openingBank = dashboard.querySelector('[data-dashboard-opening="bank"]');
+            const openingForex = dashboard.querySelector('[data-dashboard-opening="forex"]');
+            const openingGross = dashboard.querySelector('[data-dashboard-opening="gross"]');
+            const openingDate = dashboard.querySelector('[data-dashboard-opening="date"]');
+
+            if (openingCash) openingCash.textContent = money(opening.cash);
+            if (openingBank) openingBank.textContent = money(opening.bank);
+            if (openingForex) openingForex.textContent = money(opening.forex);
+            if (openingGross) openingGross.textContent = money(opening.gross);
+            if (openingDate) openingDate.textContent = opening.date || 'Belum ada';
+
             setSummary('Kas', data.position.cash);
             setSummary('Rekening', data.position.bank);
             setSummary('Valas', data.position.forex);
