@@ -6,6 +6,7 @@ use App\Models\BankMutation;
 use App\Models\CashClosing;
 use App\Models\CashMovement;
 use App\Models\McTransaction;
+use App\Models\McTransactionPayment;
 use App\Models\OpeningBalance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,16 +67,49 @@ class DashboardController extends Controller
             }
         }
 
-        // Bank position: opening balance plus all posted bank mutations from the opening date.
+        $openingBoundary = $openingDate
+            ? Carbon::parse($openingDate, $timezone)->startOfDay()
+            : null;
+
+        // Bank ledger already posted by LedgerPostingService.
         $bankMutations = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->when($openingDate, fn ($q) => $q->whereDate('transaction_date', '>=', Carbon::parse($openingDate)->toDateString()))
+            ->when($openingBoundary, fn ($q) => $q->where('transaction_date', '>=', $openingBoundary))
             ->where('transaction_date', '<=', $now)
-            ->get(['credit', 'debit', 'transaction_date']);
+            ->get(['id', 'credit', 'debit', 'transaction_date']);
 
         $bankCredit = (float) $bankMutations->sum('credit');
         $bankDebit = (float) $bankMutations->sum('debit');
+
+        // Safety net for confirmed transfer payments which were saved successfully
+        // but have not yet been linked to a BankMutation. This makes Dashboard reflect
+        // the transaction immediately and prevents an otherwise silent zero movement.
+        $unpostedTransfers = McTransactionPayment::query()
+            ->where('payment_method', 'transfer')
+            ->where('payment_status', 'confirmed')
+            ->whereNull('bank_mutation_id')
+            ->where('paid_at', '<=', $now)
+            ->whereHas('transaction', function ($q) use ($user, $openingBoundary) {
+                $q->where('tenant_id', $user->tenant_id)
+                    ->where('branch_id', $user->branch_id)
+                    ->when($openingBoundary, fn ($query) => $query->where('transaction_date', '>=', $openingBoundary));
+            })
+            ->with('settlement:id,direction')
+            ->get(['id', 'settlement_id', 'amount', 'paid_at']);
+
+        foreach ($unpostedTransfers as $payment) {
+            if (!$payment->settlement) {
+                continue;
+            }
+
+            if ($payment->settlement->direction === 'customer_pays') {
+                $bankDebit += (float) $payment->amount;
+            } elseif ($payment->settlement->direction === 'customer_receives') {
+                $bankCredit += (float) $payment->amount;
+            }
+        }
+
         $bankNet = $bankCredit - $bankDebit;
         $bankBalance = $openingBank + $bankNet;
 
@@ -84,14 +118,24 @@ class DashboardController extends Controller
         );
         $todayBankCredit = (float) $todayBankMutations->sum('credit');
         $todayBankDebit = (float) $todayBankMutations->sum('debit');
+
+        foreach ($unpostedTransfers as $payment) {
+            if (!$payment->paid_at || !Carbon::parse($payment->paid_at, $timezone)->isSameDay($today) || !$payment->settlement) {
+                continue;
+            }
+            if ($payment->settlement->direction === 'customer_pays') {
+                $todayBankDebit += (float) $payment->amount;
+            } elseif ($payment->settlement->direction === 'customer_receives') {
+                $todayBankCredit += (float) $payment->amount;
+            }
+        }
+
         $todayBankNet = $todayBankCredit - $todayBankDebit;
 
-        // Cash position must use every posted cash movement since the latest opening,
-        // not only movements created today.
         $cashMovements = CashMovement::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->when($openingDate, fn ($q) => $q->whereDate('created_at', '>=', Carbon::parse($openingDate)->toDateString()))
+            ->when($openingBoundary, fn ($q) => $q->where('created_at', '>=', $openingBoundary))
             ->where('created_at', '<=', $now)
             ->get(['direction', 'amount', 'created_at']);
 
@@ -99,8 +143,6 @@ class DashboardController extends Controller
         $cashOut = (float) $cashMovements->where('direction', 'out')->sum('amount');
         $cashBalance = $openingCash + $cashIn - $cashOut;
 
-        // Forex position is shown in its Rp valuation, using today's completed
-        // transaction flow on top of the latest opening valuation.
         $forexBalance = $openingForex + $purchase - $sales;
         $gross = $cashBalance + $bankBalance + $forexBalance;
 
