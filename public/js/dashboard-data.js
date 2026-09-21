@@ -94,9 +94,12 @@
 
             setCard('Pembelian', data.today.purchase, `${data.today.transaction_count} transaksi hari ini`);
             setCard('Penjualan', data.today.sales, `${data.today.transaction_count} transaksi hari ini`);
-            setCard('Mutasi Bank', data.today.bank_net, `Credit ${money(data.today.bank_credit)} · Debit ${money(data.today.bank_debit)}`);
+            setCard(
+                'Mutasi Bank',
+                data.position.bank,
+                `Saldo awal ${money(data.opening.bank)} · Mutasi ${money(data.today.bank_net)}`
+            );
 
-            // Existing Dashboard cards that have a direct backend source.
             setCard('Pengeluaran', data.today.cash_out, 'Cash out hari ini');
             if (data.closing) {
                 setCard('Selisih Rp', data.closing.difference, data.closing.balanced ? 'Balanced' : 'Tidak seimbang');
