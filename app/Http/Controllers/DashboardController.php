@@ -144,6 +144,17 @@ class DashboardController extends Controller
             })
             ->values();
 
+        $forexStock = [
+            'summary' => [
+                'currencies' => $forexByCurrency->count(),
+                'denominations' => $forexDetail->count(),
+                'units' => (float) $forexDetail->sum('quantity'),
+                'amount_rp' => $forexBalance,
+            ],
+            'by_currency' => $forexByCurrency,
+            'details' => $forexDetail,
+        ];
+
         // Bank position and bank mutation card use bank_mutations as the single ERP source.
         // We never add McTransactionPayment separately, preventing double counting.
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
@@ -265,6 +276,7 @@ class DashboardController extends Controller
                 'by_currency' => $forexByCurrency,
                 'details' => $forexDetail,
             ],
+            'forex_stock' => $forexStock,
             'position' => [
                 'cash' => $cashBalance,
                 'bank' => $bankBalance,
