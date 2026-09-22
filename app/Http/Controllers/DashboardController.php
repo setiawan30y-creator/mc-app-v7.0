@@ -7,6 +7,7 @@ use App\Models\CashClosing;
 use App\Models\CashInventory;
 use App\Models\CashMovement;
 use App\Models\McTransaction;
+use App\Models\McTransactionItem;
 use App\Models\McTransactionPayment;
 use App\Models\OpeningBalance;
 use Illuminate\Http\JsonResponse;
@@ -74,7 +75,9 @@ class DashboardController extends Controller
             if ($hasSell) $salesCount++;
         }
 
-        // ERP source of truth for forex position: opening inventory + stock movements.
+        // ERP source of truth for forex quantity: cash_inventory.
+        // Valuation in IDR uses the latest transaction rate for the same denomination,
+        // falling back to the opening-balance rate when no transaction rate exists yet.
         $inventories = CashInventory::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
@@ -84,10 +87,31 @@ class DashboardController extends Controller
 
         $forexDetail = $inventories
             ->filter(fn ($inventory) => strtoupper((string) ($inventory->currency?->code ?? '')) !== 'IDR')
-            ->map(function ($inventory) {
+            ->map(function ($inventory) use ($user, $opening) {
                 $quantity = (float) $inventory->quantity;
                 $denomination = (float) ($inventory->currencyDenomination?->value ?? 0);
-                $amountRp = round($quantity * $denomination, 2);
+
+                $latestRate = McTransactionItem::query()
+                    ->where('currency_id', $inventory->currency_id)
+                    ->where('currency_variant_id', $inventory->currency_variant_id)
+                    ->where('currency_denomination_id', $inventory->currency_denomination_id)
+                    ->where('rate', '>', 0)
+                    ->whereHas('transaction', fn ($q) => $q
+                        ->where('tenant_id', $user->tenant_id)
+                        ->where('branch_id', $user->branch_id)
+                        ->whereIn('status', ['paid', 'completed']))
+                    ->orderByDesc('created_at')
+                    ->value('rate');
+
+                $openingRate = (float) $opening
+                    ->where('balance_type', 'forex')
+                    ->where('currency_id', $inventory->currency_id)
+                    ->where('currency_variant_id', $inventory->currency_variant_id)
+                    ->where('currency_denomination_id', $inventory->currency_denomination_id)
+                    ->max('rate');
+
+                $rate = (float) ($latestRate ?: $openingRate);
+                $amountRp = round($quantity * $denomination * $rate, 2);
 
                 return [
                     'currency_id' => $inventory->currency_id,
@@ -96,8 +120,8 @@ class DashboardController extends Controller
                     'denomination_id' => $inventory->currency_denomination_id,
                     'denomination' => $denomination,
                     'quantity' => $quantity,
-                    'rate' => 0,
-                    'opening_rate' => 0,
+                    'rate' => $rate,
+                    'opening_rate' => $openingRate,
                     'amount_rp' => $amountRp,
                 ];
             })
@@ -181,10 +205,7 @@ class DashboardController extends Controller
             ->get(['id', 'settlement_id', 'amount', 'paid_at', 'bank_account_id', 'bank_mutation_id']);
 
         foreach ($payments as $p) {
-            if ($p->bank_mutation_id || !$p->settlement) {
-                continue;
-            }
-
+            if ($p->bank_mutation_id || !$p->settlement) continue;
             $i = $bankCards->search(fn ($a) => (string) $a['id'] === (string) $p->bank_account_id);
             if ($i === false) continue;
 
