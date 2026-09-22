@@ -19,7 +19,7 @@
     <div class="activity-grid">
         <div class="activity-card"><div class="activity-icon">↓</div><div class="activity-label">Pembelian</div><div class="activity-value" data-dashboard="purchase">Rp 0</div><div class="activity-meta"><span class="positive">Hari ini</span><span class="neutral" data-dashboard="purchase-count">0 transaksi</span></div></div>
         <div class="activity-card"><div class="activity-icon">↑</div><div class="activity-label">Penjualan</div><div class="activity-value" data-dashboard="sales">Rp 0</div><div class="activity-meta"><span class="positive">Hari ini</span><span class="neutral" data-dashboard="sales-count">0 transaksi</span></div></div>
-        <div class="activity-card"><div class="activity-icon">⇄</div><div class="activity-label">Mutasi Bank</div><div class="activity-value" data-dashboard="bank-net">Rp 0</div><div class="activity-meta"><span class="positive" data-dashboard="bank-credit-small">+ Rp 0</span><span class="negative" data-dashboard="bank-debit-small">- Rp 0</span></div></div>
+        <div class="activity-card"><div class="activity-icon">⇄</div><div class="activity-label">Mutasi Bank</div><div class="activity-value" data-dashboard="bank-net">Rp 0</div><div class="activity-meta"><span class="positive" data-dashboard="bank-credit-small">+ Rp 0</span><span class="negative" data-dashboard="bank-debit-small">- Rp 0</span></div><div class="activity-meta"><span class="neutral">Mutasi hari ini</span><span class="neutral" data-dashboard="bank-mutation-count">0 mutasi</span></div></div>
         <div class="activity-card"><div class="activity-icon">◆</div><div class="activity-label">Pengeluaran</div><div class="activity-value" data-dashboard="expense">Rp 0</div><div class="activity-meta"><span class="negative">Hari ini</span><span class="neutral" data-dashboard="expense-count">0 transaksi</span></div></div>
     </div>
 
@@ -69,13 +69,14 @@
             setText('purchase-count',(data.today?.purchase_count||0)+' transaksi');
             setText('sales-count',(data.today?.sales_count||0)+' transaksi');
             setText('expense-count',(data.today?.expense_count||0)+' transaksi');
+            setText('bank-mutation-count',(data.today?.bank_mutation_count||0)+' mutasi');
             const forexDetail=document.querySelector('[data-dashboard="forex-detail"]');
             if(forexDetail){forexDetail.textContent='Saldo awal '+money(data.opening?.forex)+' + beli '+money(data.today?.purchase)+' − jual '+money(data.today?.sales);}
             const list=document.getElementById('dashboard-bank-list');
             list.innerHTML='';
             (data.bank_accounts||[]).forEach(bank=>{
                 const item=document.createElement('div'); item.className='bank-item';
-                item.innerHTML='<div class="bank-name">'+escapeHtml(bank.bank_name||'Bank')+'</div><div class="bank-account">'+escapeHtml(bank.account_number||'')+'</div><div class="bank-balance">'+money(bank.balance)+'</div><div class="bank-mutation">Hari ini: + '+money(bank.today_credit)+' / - '+money(bank.today_debit)+'</div>';
+                item.innerHTML='<div class="bank-name">'+escapeHtml(bank.bank_name||'Bank')+'</div><div class="bank-account">'+escapeHtml(bank.account_number||'')+'</div><div class="bank-balance">'+money(bank.balance)+'</div><div class="bank-mutation">Hari ini: + '+money(bank.today_credit)+' / - '+money(bank.today_debit)+' · '+(bank.today_mutation_count||0)+' mutasi</div>';
                 list.appendChild(item);
             });
             if(!list.children.length) list.innerHTML='<div class="bank-item"><div class="bank-name">Belum ada rekening aktif</div><div class="bank-account">Tambahkan rekening pada Pengaturan Bank</div></div>';
