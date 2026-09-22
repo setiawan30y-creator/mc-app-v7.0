@@ -56,6 +56,7 @@ class DashboardController extends Controller
         $todayBankCredit = (float) $bankCards->sum('today_credit');
         $todayBankDebit = (float) $bankCards->sum('today_debit');
 
+        // Legacy fallback only. New transfer payments are required to have a real bank mutation.
         $payments = McTransactionPayment::where('payment_method','transfer')->where('payment_status','confirmed')->whereNotNull('bank_account_id')
             ->where('paid_at','<=',$now)->whereHas('transaction', fn($q)=>$q->where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id))
             ->with('settlement:id,direction')->get(['id','settlement_id','amount','paid_at','bank_account_id','bank_mutation_id']);
@@ -70,7 +71,10 @@ class DashboardController extends Controller
         $bankBalance=(float)$bankCards->sum('balance'); $bankCredit=(float)$bankCards->sum('credit'); $bankDebit=(float)$bankCards->sum('debit');
         $todayBankCredit=(float)$bankCards->sum('today_credit'); $todayBankDebit=(float)$bankCards->sum('today_debit');
 
-        $cashMovements=CashMovement::where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)->get(['direction','amount','created_at']);
+        // Dashboard cash is Rupiah. Foreign-currency cash movements must not be mixed into Rp cash.
+        $cashMovements=CashMovement::where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)
+            ->whereHas('currency', fn($q)=>$q->where('code','IDR'))
+            ->get(['direction','amount','created_at']);
         $cashIn=(float)$cashMovements->where('direction','in')->sum('amount'); $cashOut=(float)$cashMovements->where('direction','out')->sum('amount');
         $cashBalance=$openingCash+$cashIn-$cashOut; $forexBalance=$openingForex+$purchase-$sales; $gross=$cashBalance+$bankBalance+$forexBalance;
         $closing=CashClosing::where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)->whereDate('business_date',$today->toDateString())->latest('created_at')->first();
