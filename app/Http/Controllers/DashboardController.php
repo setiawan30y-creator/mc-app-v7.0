@@ -17,9 +17,6 @@ class DashboardController extends Controller
 {
     public function index(Request $request)
     {
-        // The Blade dashboard renders some values server-side while the same
-        // payload is refreshed by dashboard.data. Build the initial payload
-        // from the exact same source so Blade and AJAX can never drift apart.
         $dashboard = $this->data($request)->getData(true);
 
         return view('dashboard', compact('dashboard'));
@@ -77,6 +74,12 @@ class DashboardController extends Controller
             if ($hasBuy) $purchaseCount++;
             if ($hasSell) $salesCount++;
         }
+
+        $customerCount = (int) $transactionsToday
+            ->pluck('customer_id')
+            ->filter()
+            ->unique()
+            ->count();
 
         $inventories = CashInventory::query()
             ->where('tenant_id', $user->tenant_id)
@@ -141,9 +144,8 @@ class DashboardController extends Controller
             })
             ->values();
 
-        // Bank position is calculated from ONE ERP source of truth: bank_mutations.
-        // Opening balance is the baseline; only mutations on/after the active opening date
-        // are applied. We intentionally do not add McTransactionPayment again here.
+        // Bank position and bank mutation card use bank_mutations as the single ERP source.
+        // We never add McTransactionPayment separately, preventing double counting.
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('is_active', true)
@@ -254,6 +256,7 @@ class DashboardController extends Controller
                 'cash_out' => $todayCashOut,
                 'cash_net' => $todayCashIn - $todayCashOut,
                 'transaction_count' => $transactionsToday->count(),
+                'customer_count' => $customerCount,
             ],
             'bank_accounts' => $bankCards->values(),
             'forex' => [
