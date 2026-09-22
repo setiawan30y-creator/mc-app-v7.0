@@ -12,19 +12,26 @@ use RuntimeException;
 
 class ForexInventoryPostingService
 {
+    public function __construct(
+        protected ClosingPeriodGuard $closingPeriodGuard,
+    ) {
+    }
+
     /**
      * Post the foreign-currency side of a paid transaction.
      *
      * BUY  = dealer receives forex (IN)
      * SELL = dealer gives forex (OUT)
-     *
-     * The first time an inventory bucket is encountered, its baseline is
-     * seeded from the latest finalized forex opening balance for that
-     * denomination. Subsequent calls only post transaction movements.
      */
     public function post(McTransaction $transaction): void
     {
         $transaction->loadMissing(['items.currency', 'items.currencyVariant', 'items.currencyDenomination']);
+
+        $this->closingPeriodGuard->assertOpen(
+            $transaction->transaction_date,
+            $transaction->tenant_id,
+            $transaction->branch_id,
+        );
 
         $items = $transaction->items
             ->filter(fn ($item) => strtoupper((string) $item->currency?->code) !== 'IDR');
@@ -34,7 +41,7 @@ class ForexInventoryPostingService
         }
 
         DB::transaction(function () use ($transaction, $items) {
-            $groups = $items->groupBy(function ($item) {
+            $groups = $items->groupBy(function ($item) use ($transaction) {
                 if (!$item->currency_denomination_id) {
                     throw new RuntimeException(
                         'Denominasi valas wajib dipilih untuk transaksi ' . $transaction->transaction_no . '.'
