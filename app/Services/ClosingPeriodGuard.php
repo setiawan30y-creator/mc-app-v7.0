@@ -8,21 +8,27 @@ use Illuminate\Validation\ValidationException;
 
 class ClosingPeriodGuard
 {
-    /**
-     * Prevent posting or editing ledger data inside a closed closing period.
-     *
-     * The guard is intentionally independent from controllers so Transaction,
-     * Cash, Bank and Forex inventory services can share the same rule.
-     */
-    public function assertOpen(CarbonInterface|string $businessDate): void
-    {
+    public function assertOpen(
+        CarbonInterface|string $businessDate,
+        ?string $tenantId = null,
+        ?string $branchId = null,
+    ): void {
         $date = $businessDate instanceof CarbonInterface
             ? $businessDate->toDateString()
-            : (string) $businessDate;
+            : date('Y-m-d', strtotime((string) $businessDate));
+
+        $tenantId ??= auth()->user()?->tenant_id;
+        $branchId ??= auth()->user()?->branch_id;
+
+        if (!$tenantId) {
+            return;
+        }
 
         $closed = CashClosing::query()
-            ->whereDate('closing_date', $date)
-            ->where('status', CashClosing::STATUS_CLOSED)
+            ->where('tenant_id', $tenantId)
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereDate('business_date', $date)
+            ->where('status', 'closed')
             ->exists();
 
         if ($closed) {
@@ -32,18 +38,27 @@ class ClosingPeriodGuard
         }
     }
 
-    /**
-     * Returns whether a date belongs to a closed period without throwing.
-     */
-    public function isClosed(CarbonInterface|string $businessDate): bool
-    {
+    public function isClosed(
+        CarbonInterface|string $businessDate,
+        ?string $tenantId = null,
+        ?string $branchId = null,
+    ): bool {
         $date = $businessDate instanceof CarbonInterface
             ? $businessDate->toDateString()
-            : (string) $businessDate;
+            : date('Y-m-d', strtotime((string) $businessDate));
+
+        $tenantId ??= auth()->user()?->tenant_id;
+        $branchId ??= auth()->user()?->branch_id;
+
+        if (!$tenantId) {
+            return false;
+        }
 
         return CashClosing::query()
-            ->whereDate('closing_date', $date)
-            ->where('status', CashClosing::STATUS_CLOSED)
+            ->where('tenant_id', $tenantId)
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereDate('business_date', $date)
+            ->where('status', 'closed')
             ->exists();
     }
 }
