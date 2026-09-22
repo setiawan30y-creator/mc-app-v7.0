@@ -17,7 +17,14 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        return view('dashboard');
+        // Keep compatibility with dashboard Blade versions that render the
+        // business date server-side. The live balances are still loaded from
+        // dashboard.data via AJAX.
+        return view('dashboard', [
+            'dashboard' => [
+                'date' => Carbon::now(config('app.timezone', 'Asia/Jakarta'))->toDateString(),
+            ],
+        ]);
     }
 
     public function data(Request $request): JsonResponse
@@ -138,8 +145,7 @@ class DashboardController extends Controller
 
         // Bank position is calculated from ONE ERP source of truth: bank_mutations.
         // Opening balance is the baseline; only mutations on/after the active opening date
-        // are applied. We intentionally do not add McTransactionPayment again here,
-        // because confirmed transfers are already posted as BankMutation by LedgerPostingService.
+        // are applied. We intentionally do not add McTransactionPayment again here.
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('is_active', true)
@@ -154,10 +160,7 @@ class DashboardController extends Controller
                 ->where('bank_account_id', $a->id)
                 ->sum('amount_rp');
 
-            $balance = $openingDate
-                ? $openingForAccount
-                : (float) $a->opening_balance;
-
+            $balance = $openingDate ? $openingForAccount : (float) $a->opening_balance;
             $credit = 0.0;
             $debit = 0.0;
             $todayCredit = 0.0;
@@ -166,12 +169,7 @@ class DashboardController extends Controller
 
             foreach ($a->mutations as $m) {
                 $md = Carbon::parse($m->transaction_date, $tz);
-
-                // Do not replay mutations that belong to a period before the
-                // finalized opening balance currently used by the dashboard.
-                if ($openingDate && $md->lt(Carbon::parse($openingDate, $tz)->startOfDay())) {
-                    continue;
-                }
+                if ($openingDate && $md->lt(Carbon::parse($openingDate, $tz)->startOfDay())) continue;
 
                 $c = (float) $m->credit;
                 $d = (float) $m->debit;
@@ -212,14 +210,11 @@ class DashboardController extends Controller
             ->where('branch_id', $user->branch_id)
             ->whereHas('currency', fn ($q) => $q->where('code', 'IDR'));
 
-        if ($openingDate) {
-            $cashQuery->whereDate('created_at', '>=', $openingDate);
-        }
+        if ($openingDate) $cashQuery->whereDate('created_at', '>=', $openingDate);
 
         $cashMovements = $cashQuery->get(['direction', 'amount', 'transaction_id', 'movement_type', 'created_at']);
         $cashIn = (float) $cashMovements->where('direction', 'in')->sum('amount');
         $cashOut = (float) $cashMovements->where('direction', 'out')->sum('amount');
-
         $todayCashMovements = $cashMovements->filter(fn ($movement) => Carbon::parse($movement->created_at, $tz)->isSameDay($today));
         $todayCashIn = (float) $todayCashMovements->where('direction', 'in')->sum('amount');
         $todayCashOut = (float) $todayCashMovements->where('direction', 'out')->sum('amount');
