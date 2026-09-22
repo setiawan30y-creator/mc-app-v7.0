@@ -150,13 +150,12 @@ class DashboardController extends Controller
                 'denominations' => $forexDetail->count(),
                 'units' => (float) $forexDetail->sum('quantity'),
                 'amount_rp' => $forexBalance,
+                'value' => $forexBalance,
             ],
             'by_currency' => $forexByCurrency,
             'details' => $forexDetail,
         ];
 
-        // Bank position and bank mutation card use bank_mutations as the single ERP source.
-        // We never add McTransactionPayment separately, preventing double counting.
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('is_active', true)
