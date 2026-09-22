@@ -15,16 +15,14 @@ use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        // Keep compatibility with dashboard Blade versions that render the
-        // business date server-side. The live balances are still loaded from
-        // dashboard.data via AJAX.
-        return view('dashboard', [
-            'dashboard' => [
-                'date' => Carbon::now(config('app.timezone', 'Asia/Jakarta'))->toDateString(),
-            ],
-        ]);
+        // The Blade dashboard renders some values server-side while the same
+        // payload is refreshed by dashboard.data. Build the initial payload
+        // from the exact same source so Blade and AJAX can never drift apart.
+        $dashboard = $this->data($request)->getData(true);
+
+        return view('dashboard', compact('dashboard'));
     }
 
     public function data(Request $request): JsonResponse
