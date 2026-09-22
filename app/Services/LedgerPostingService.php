@@ -18,6 +18,11 @@ class LedgerPostingService
     public const SOURCE_TRANSACTION = 'manual';
     public const RECONCILIATION_MATCHED = 'matched';
 
+    public function __construct(
+        protected ClosingPeriodGuard $closingPeriodGuard,
+    ) {
+    }
+
     /**
      * Post a confirmed transaction payment into the financial ledger.
      *
@@ -33,6 +38,14 @@ class LedgerPostingService
                 ->with(['transaction', 'settlement', 'bankAccount'])
                 ->lockForUpdate()
                 ->findOrFail($payment->getKey());
+
+            if (!$payment->transaction) {
+                throw new RuntimeException('Transaction payment tidak ditemukan.');
+            }
+
+            $this->closingPeriodGuard->assertOpen(
+                $payment->transaction->transaction_date ?? now()
+            );
 
             if ($payment->payment_status === 'failed') {
                 throw new RuntimeException('Payment gagal tidak dapat diposting ke ledger.');
@@ -69,21 +82,14 @@ class LedgerPostingService
 
     /**
      * Post a posted expense into the same cash/bank ledger used by transactions.
-     *
-     * $data:
-     * - tenant_id
-     * - branch_id
-     * - source_type: cash|bank
-     * - bank_account_id: required for bank
-     * - amount
-     * - reference
-     * - notes
-     * - created_by
-     * - expense_key: optional idempotency key stored as reference
      */
     public function postExpense(array $data): void
     {
         DB::transaction(function () use ($data): void {
+            $this->closingPeriodGuard->assertOpen(
+                $data['business_date'] ?? now()
+            );
+
             $tenantId = trim((string) ($data['tenant_id'] ?? ''));
             $branchId = trim((string) ($data['branch_id'] ?? ''));
             $sourceType = strtolower(trim((string) ($data['source_type'] ?? '')));
@@ -109,14 +115,7 @@ class LedgerPostingService
             }
 
             if ($sourceType === 'cash') {
-                $this->postExpenseCash(
-                    $tenantId,
-                    $branchId,
-                    $amount,
-                    $reference,
-                    $notes,
-                    $createdBy
-                );
+                $this->postExpenseCash($tenantId, $branchId, $amount, $reference, $notes, $createdBy);
                 return;
             }
 
@@ -125,26 +124,12 @@ class LedgerPostingService
                 throw new RuntimeException('Rekening bank wajib dipilih untuk pengeluaran bank.');
             }
 
-            $this->postExpenseBank(
-                $tenantId,
-                $branchId,
-                $bankAccountId,
-                $amount,
-                $reference,
-                $notes,
-                $createdBy
-            );
+            $this->postExpenseBank($tenantId, $branchId, $bankAccountId, $amount, $reference, $notes, $createdBy);
         });
     }
 
-    protected function postExpenseCash(
-        string $tenantId,
-        string $branchId,
-        float $amount,
-        string $reference,
-        ?string $notes,
-        ?int $createdBy
-    ): void {
+    protected function postExpenseCash(string $tenantId, string $branchId, float $amount, string $reference, ?string $notes, ?int $createdBy): void
+    {
         $existing = CashMovement::query()
             ->where('tenant_id', $tenantId)
             ->where('branch_id', $branchId)
@@ -181,15 +166,8 @@ class LedgerPostingService
         ]);
     }
 
-    protected function postExpenseBank(
-        string $tenantId,
-        string $branchId,
-        string $bankAccountId,
-        float $amount,
-        string $reference,
-        ?string $notes,
-        ?int $createdBy
-    ): void {
+    protected function postExpenseBank(string $tenantId, string $branchId, string $bankAccountId, float $amount, string $reference, ?string $notes, ?int $createdBy): void
+    {
         $bank = BankAccount::query()
             ->whereKey($bankAccountId)
             ->where('tenant_id', $tenantId)
@@ -247,10 +225,8 @@ class LedgerPostingService
         ]);
     }
 
-    protected function postCashPayment(
-        McTransactionPayment $payment,
-        string $direction
-    ): void {
+    protected function postCashPayment(McTransactionPayment $payment, string $direction): void
+    {
         $existing = CashMovement::query()
             ->where('payment_id', $payment->id)
             ->lockForUpdate()
@@ -281,10 +257,8 @@ class LedgerPostingService
         ]);
     }
 
-    protected function postBankPayment(
-        McTransactionPayment $payment,
-        string $direction
-    ): void {
+    protected function postBankPayment(McTransactionPayment $payment, string $direction): void
+    {
         $existing = $payment->bank_mutation_id
             ? BankMutation::query()
                 ->whereKey($payment->bank_mutation_id)
