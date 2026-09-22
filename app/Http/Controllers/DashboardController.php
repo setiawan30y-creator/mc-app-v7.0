@@ -175,8 +175,13 @@ class DashboardController extends Controller
             ->orderBy('account_number')
             ->get();
 
-        $bankCards = $accounts->map(function ($a) use ($tz, $today) {
-            $balance = (float) $a->opening_balance;
+        $bankCards = $accounts->map(function ($a) use ($tz, $today, $opening) {
+            $openingForAccount = $opening
+                ->where('balance_type', 'bank')
+                ->where('bank_account_id', $a->id)
+                ->sum('amount_rp');
+            $openingForAccount = (float) $openingForAccount;
+            $balance = $openingForAccount > 0 ? $openingForAccount : (float) $a->opening_balance;
             $credit = 0.0;
             $debit = 0.0;
             $todayCredit = 0.0;
@@ -205,7 +210,7 @@ class DashboardController extends Controller
                 'account_number' => $a->account_number,
                 'currency' => $a->currency?->code ?? 'IDR',
                 'currency_name' => $a->currency?->name ?? 'Rupiah',
-                'opening_balance' => (float) $a->opening_balance,
+                'opening_balance' => $balance - $credit + $debit,
                 'credit' => $credit,
                 'debit' => $debit,
                 'today_credit' => $todayCredit,
