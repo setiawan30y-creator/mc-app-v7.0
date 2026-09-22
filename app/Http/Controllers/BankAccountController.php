@@ -35,12 +35,29 @@ class BankAccountController extends Controller
                 ->orderByDesc('transaction_date'),
         ]);
 
-        // Satu riwayat terpusat untuk seluruh rekening bank pada tenant + branch aktif.
-        // Detail saldo tetap dihitung per rekening pada kartu di atas.
-        $mutations = BankMutation::query()
+        // Form riwayat dapat memilih satu rekening atau seluruh rekening.
+        $selectedBankAccount = $request->filled('bank_account_id')
+            ? $accounts->firstWhere('id', (int) $request->integer('bank_account_id'))
+            : null;
+
+        $mutationsQuery = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
-            ->with('bankAccount')
+            ->with('bankAccount');
+
+        if ($selectedBankAccount) {
+            $mutationsQuery->where('bank_account_id', $selectedBankAccount->id);
+        }
+
+        if ($request->filled('date_from')) {
+            $mutationsQuery->whereDate('transaction_date', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $mutationsQuery->whereDate('transaction_date', '<=', $request->input('date_to'));
+        }
+
+        $mutations = $mutationsQuery
             ->orderByDesc('transaction_date')
             ->orderByDesc('created_at')
             ->paginate(50, ['*'], 'mutations_page')
@@ -49,6 +66,9 @@ class BankAccountController extends Controller
         return view('settings.bank-accounts.index', [
             'accounts' => $accounts,
             'mutations' => $mutations,
+            'selectedBankAccount' => $selectedBankAccount,
+            'dateFrom' => $request->input('date_from'),
+            'dateTo' => $request->input('date_to'),
         ]);
     }
 
