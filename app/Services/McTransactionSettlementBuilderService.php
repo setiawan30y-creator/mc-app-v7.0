@@ -12,8 +12,6 @@ use RuntimeException;
 
 class McTransactionSettlementBuilderService
 {
-    protected const IDR_CURRENCY_ID = 18;
-
     /**
      * Build settlement automatically from transaction items.
      *
@@ -65,13 +63,6 @@ class McTransactionSettlementBuilderService
                 $quantity = (float) $item->quantity;
                 $subtotal = (float) $item->subtotal;
 
-                /*
-                 * BUY
-                 *
-                 * Customer:
-                 *   pays      = foreign currency quantity
-                 *   receives  = IDR subtotal
-                 */
                 if ($item->direction === 'buy') {
                     $this->addAmount(
                         $buckets['customer_pays'],
@@ -88,13 +79,6 @@ class McTransactionSettlementBuilderService
                     continue;
                 }
 
-                /*
-                 * SELL
-                 *
-                 * Customer:
-                 *   pays      = IDR subtotal
-                 *   receives  = foreign currency quantity
-                 */
                 $this->addAmount(
                     $buckets['customer_pays'],
                     (string) $idCurrency->id,
@@ -110,29 +94,21 @@ class McTransactionSettlementBuilderService
 
             $settlements = collect();
 
-            foreach (
-                [
-                    'customer_pays',
-                    'customer_receives',
-                ] as $direction
-            ) {
-                foreach (
-                    $buckets[$direction] as $currencyId => $amount
-                ) {
+            foreach (['customer_pays', 'customer_receives'] as $direction) {
+                foreach ($buckets[$direction] as $currencyId => $amount) {
                     if ($amount <= 0) {
                         continue;
                     }
 
-                    $settlement =
-                        McTransactionSettlement::query()->create([
-                            'id' => (string) Str::ulid(),
-                            'transaction_id' => $transaction->id,
-                            'direction' => $direction,
-                            'currency_id' => $currencyId,
-                            'amount' => $this->normalizeAmount($amount),
-                            'status' => 'pending',
-                            'notes' => null,
-                        ]);
+                    $settlement = McTransactionSettlement::query()->create([
+                        'id' => (string) Str::ulid(),
+                        'transaction_id' => $transaction->id,
+                        'direction' => $direction,
+                        'currency_id' => $currencyId,
+                        'amount' => $this->normalizeAmount($amount),
+                        'status' => 'pending',
+                        'notes' => null,
+                    ]);
 
                     $settlements->push($settlement);
                 }
@@ -152,60 +128,29 @@ class McTransactionSettlementBuilderService
         });
     }
 
-    /**
-     * Validate transaction items before creating settlements.
-     */
-    protected function validateTransactionItems(
-        Collection $items
-    ): void {
+    protected function validateTransactionItems(Collection $items): void
+    {
         foreach ($items as $index => $item) {
-            if (!in_array(
-                $item->direction,
-                ['buy', 'sell'],
-                true
-            )) {
-                throw new RuntimeException(
-                    "Item {$index} memiliki direction tidak valid."
-                );
+            if (!in_array($item->direction, ['buy', 'sell'], true)) {
+                throw new RuntimeException("Item {$index} memiliki direction tidak valid.");
             }
 
-            if (
-                $item->quantity === null
-                || (float) $item->quantity <= 0
-            ) {
-                throw new RuntimeException(
-                    "Item {$index} memiliki quantity tidak valid."
-                );
+            if ($item->quantity === null || (float) $item->quantity <= 0) {
+                throw new RuntimeException("Item {$index} memiliki quantity tidak valid.");
             }
 
-            if (
-                $item->subtotal === null
-                || (float) $item->subtotal <= 0
-            ) {
-                throw new RuntimeException(
-                    "Item {$index} memiliki subtotal tidak valid."
-                );
+            if ($item->subtotal === null || (float) $item->subtotal <= 0) {
+                throw new RuntimeException("Item {$index} memiliki subtotal tidak valid.");
             }
 
-            if (
-                $item->currency_id === null
-                || (string) $item->currency_id === ''
-            ) {
-                throw new RuntimeException(
-                    "Item {$index} tidak memiliki currency."
-                );
+            if ($item->currency_id === null || (string) $item->currency_id === '') {
+                throw new RuntimeException("Item {$index} tidak memiliki currency.");
             }
         }
     }
 
-    /**
-     * Add an amount to a direction/currency bucket.
-     */
-    protected function addAmount(
-        array &$bucket,
-        string $currencyId,
-        float $amount
-    ): void {
+    protected function addAmount(array &$bucket, string $currencyId, float $amount): void
+    {
         if ($amount <= 0) {
             return;
         }
@@ -218,12 +163,11 @@ class McTransactionSettlementBuilderService
     }
 
     /**
-     * Get IDR master currency.
+     * Resolve IDR by its stable business code, never by a hard-coded PK.
      */
     protected function getIdrCurrency(): Currency
     {
         $currency = Currency::query()
-            ->whereKey(self::IDR_CURRENCY_ID)
             ->where('code', 'IDR')
             ->first();
 
@@ -236,16 +180,8 @@ class McTransactionSettlementBuilderService
         return $currency;
     }
 
-    /**
-     * Normalize financial amount to 2 decimal places.
-     */
     protected function normalizeAmount(float $amount): string
     {
-        return number_format(
-            round($amount, 2),
-            2,
-            '.',
-            ''
-        );
+        return number_format(round($amount, 2), 2, '.', '');
     }
 }
