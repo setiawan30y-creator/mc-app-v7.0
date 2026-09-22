@@ -27,16 +27,21 @@ class BankAccountController extends Controller
             ? $accounts->firstWhere('id', (int) $request->integer('bank_account_id'))
             : null;
 
-        // Total saldo hanya dijumlahkan di dalam mata uang yang sama.
-        // Ini mencegah USD, EUR, dan IDR dijumlahkan menjadi angka yang tidak bermakna.
-        $bankTotalsByCurrency = $accounts->where('is_active', true)
-            ->groupBy(fn ($account) => $account->currency?->code ?? 'N/A')
-            ->map(fn ($currencyAccounts) => [
-                'code' => $currencyAccounts->first()->currency?->code ?? 'N/A',
-                'name' => $currencyAccounts->first()->currency?->name ?? 'Mata Uang',
-                'total' => $currencyAccounts->sum(fn ($account) => (float) $account->calculated_balance),
-                'accounts' => $currencyAccounts->count(),
-            ])->values();
+        // Kartu Total Saldo Bank memang hanya membutuhkan SATU nominal.
+        // Jumlahkan saldo berjalan seluruh rekening bank aktif yang ditampilkan.
+        $activeAccounts = $accounts->where('is_active', true);
+        $totalBankBalance = $activeAccounts->sum(fn ($account) => (float) $account->calculated_balance);
+
+        // View lama tetap memakai collection ini, tetapi sekarang hanya berisi
+        // satu total nominal agar tidak memecah saldo menjadi beberapa kartu/angka.
+        $bankTotalsByCurrency = collect([
+            [
+                'code' => 'IDR',
+                'name' => 'Indonesian Rupiah',
+                'total' => $totalBankBalance,
+                'accounts' => $activeAccounts->count(),
+            ],
+        ]);
 
         $mutationsQuery = BankMutation::query()
             ->where('tenant_id', $user->tenant_id)
