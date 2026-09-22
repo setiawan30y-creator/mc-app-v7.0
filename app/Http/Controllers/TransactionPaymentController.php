@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
+use App\Models\CashMovement;
 use App\Models\Currency;
 use App\Models\McTransaction;
 use App\Models\McTransactionPayment;
@@ -12,6 +13,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class TransactionPaymentController extends Controller
 {
@@ -127,6 +129,7 @@ class TransactionPaymentController extends Controller
                 );
 
                 $this->ledgerPostingService->postPayment($payment);
+                $this->assertCashLedgerPosted($payment->id);
             }
 
             if ($transfer > 0) {
@@ -141,6 +144,7 @@ class TransactionPaymentController extends Controller
                 );
 
                 $this->ledgerPostingService->postPayment($payment);
+                $this->assertBankLedgerPosted($payment->id);
             }
 
             $trx->forceFill([
@@ -180,6 +184,22 @@ class TransactionPaymentController extends Controller
             'confirmed_by' => auth()->id(),
             'notes' => $validated['notes'] ?? null,
         ]);
+    }
+
+    protected function assertCashLedgerPosted(string $paymentId): void
+    {
+        if (!CashMovement::query()->where('payment_id', $paymentId)->exists()) {
+            throw new RuntimeException('Payment cash berhasil dibuat tetapi mutasi kas tidak terbentuk. Transaksi dibatalkan untuk mencegah saldo tidak sinkron.');
+        }
+    }
+
+    protected function assertBankLedgerPosted(string $paymentId): void
+    {
+        $payment = McTransactionPayment::query()->find($paymentId);
+
+        if (!$payment || !$payment->bank_mutation_id) {
+            throw new RuntimeException('Payment transfer berhasil dibuat tetapi mutasi bank tidak terbentuk. Transaksi dibatalkan untuk mencegah saldo tidak sinkron.');
+        }
     }
 
     protected function transaction(string $id): McTransaction
