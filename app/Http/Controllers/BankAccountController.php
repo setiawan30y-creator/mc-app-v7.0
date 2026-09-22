@@ -25,6 +25,15 @@ class BankAccountController extends Controller
             false
         );
 
+        $today = now()->startOfDay();
+        $accounts->load([
+            'currency',
+            'mutations' => fn ($query) => $query
+                ->where('transaction_date', '>=', $today)
+                ->where('transaction_date', '<', $today->copy()->addDay())
+                ->orderByDesc('transaction_date'),
+        ]);
+
         return view('settings.bank-accounts.index', [
             'accounts' => $accounts,
         ]);
@@ -45,44 +54,14 @@ class BankAccountController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'bank_name' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-            'bank_code' => [
-                'nullable',
-                'string',
-                'max:30',
-            ],
-            'account_name' => [
-                'required',
-                'string',
-                'max:150',
-            ],
-            'account_number' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-            'currency_id' => [
-                'required',
-                'integer',
-                'exists:currencies,id',
-            ],
-            'opening_balance' => [
-                'nullable',
-                'numeric',
-                'min:0',
-            ],
-            'is_active' => [
-                'nullable',
-                'boolean',
-            ],
-            'notes' => [
-                'nullable',
-                'string',
-            ],
+            'bank_name' => ['required', 'string', 'max:100'],
+            'bank_code' => ['nullable', 'string', 'max:30'],
+            'account_name' => ['required', 'string', 'max:150'],
+            'account_number' => ['required', 'string', 'max:100'],
+            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'opening_balance' => ['nullable', 'numeric', 'min:0'],
+            'is_active' => ['nullable', 'boolean'],
+            'notes' => ['nullable', 'string'],
         ]);
 
         $user = $request->user();
@@ -98,10 +77,8 @@ class BankAccountController extends Controller
             ->with('success', 'Rekening bank berhasil ditambahkan.');
     }
 
-    public function show(
-        Request $request,
-        string $bankAccount
-    ): View {
+    public function show(Request $request, string $bankAccount): View
+    {
         $user = $request->user();
 
         $account = $this->bankAccountService->find(
@@ -122,10 +99,8 @@ class BankAccountController extends Controller
         ]);
     }
 
-    public function edit(
-        Request $request,
-        string $bankAccount
-    ): View {
+    public function edit(Request $request, string $bankAccount): View
+    {
         $user = $request->user();
 
         $account = $this->bankAccountService->find(
@@ -145,49 +120,17 @@ class BankAccountController extends Controller
         ]);
     }
 
-    public function update(
-        Request $request,
-        string $bankAccount
-    ): RedirectResponse {
+    public function update(Request $request, string $bankAccount): RedirectResponse
+    {
         $validated = $request->validate([
-            'bank_name' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-            'bank_code' => [
-                'nullable',
-                'string',
-                'max:30',
-            ],
-            'account_name' => [
-                'required',
-                'string',
-                'max:150',
-            ],
-            'account_number' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-            'currency_id' => [
-                'required',
-                'integer',
-                'exists:currencies,id',
-            ],
-            'opening_balance' => [
-                'nullable',
-                'numeric',
-                'min:0',
-            ],
-            'is_active' => [
-                'nullable',
-                'boolean',
-            ],
-            'notes' => [
-                'nullable',
-                'string',
-            ],
+            'bank_name' => ['required', 'string', 'max:100'],
+            'bank_code' => ['nullable', 'string', 'max:30'],
+            'account_name' => ['required', 'string', 'max:150'],
+            'account_number' => ['required', 'string', 'max:100'],
+            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'opening_balance' => ['nullable', 'numeric', 'min:0'],
+            'is_active' => ['nullable', 'boolean'],
+            'notes' => ['nullable', 'string'],
         ]);
 
         $user = $request->user();
@@ -204,37 +147,17 @@ class BankAccountController extends Controller
             ->with('success', 'Rekening bank berhasil diperbarui.');
     }
 
-    public function deactivate(
-        Request $request,
-        string $bankAccount
-    ): RedirectResponse {
+    public function deactivate(Request $request, string $bankAccount): RedirectResponse
+    {
         $user = $request->user();
-
-        $this->bankAccountService->deactivate(
-            $user->tenant_id,
-            $user->branch_id,
-            $bankAccount
-        );
-
-        return redirect()
-            ->route('settings.bank-accounts.index')
-            ->with('success', 'Rekening bank berhasil dinonaktifkan.');
+        $this->bankAccountService->deactivate($user->tenant_id, $user->branch_id, $bankAccount);
+        return redirect()->route('settings.bank-accounts.index')->with('success', 'Rekening bank berhasil dinonaktifkan.');
     }
 
-    public function activate(
-        Request $request,
-        string $bankAccount
-    ): RedirectResponse {
+    public function activate(Request $request, string $bankAccount): RedirectResponse
+    {
         $user = $request->user();
-
-        $this->bankAccountService->activate(
-            $user->tenant_id,
-            $user->branch_id,
-            $bankAccount
-        );
-
-        return redirect()
-            ->route('settings.bank-accounts.index')
-            ->with('success', 'Rekening bank berhasil diaktifkan.');
+        $this->bankAccountService->activate($user->tenant_id, $user->branch_id, $bankAccount);
+        return redirect()->route('settings.bank-accounts.index')->with('success', 'Rekening bank berhasil diaktifkan.');
     }
 }
