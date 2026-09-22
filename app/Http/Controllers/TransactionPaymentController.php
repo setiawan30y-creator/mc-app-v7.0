@@ -73,6 +73,12 @@ class TransactionPaymentController extends Controller
         $alreadyPaid = (float) $trx->payments->where('payment_status', '!=', 'failed')->sum('amount');
         $remaining = max(0, round($required - $alreadyPaid, 2));
 
+        if ($trx->status === 'completed' || $trx->settlement_status === 'paid') {
+            throw ValidationException::withMessages([
+                'payment' => 'Transaksi sudah dibayar dan tidak dapat diposting ulang.',
+            ]);
+        }
+
         $cash = round((float) ($validated['cash_amount'] ?? 0), 2);
         $transfer = round((float) ($validated['transfer_amount'] ?? 0), 2);
 
@@ -114,26 +120,41 @@ class TransactionPaymentController extends Controller
         }
 
         DB::transaction(function () use ($trx, $settlement, $idr, $cash, $transfer, $validated) {
+            // Re-lock the transaction so two teller requests cannot settle the same
+            // transaction concurrently and create duplicate cash/bank/stock entries.
+            $lockedTrx = McTransaction::query()
+                ->whereKey($trx->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedTrx->status === 'completed' || $lockedTrx->settlement_status === 'paid') {
+                throw new RuntimeException('Transaksi sudah dibayar oleh proses lain.');
+            }
+
             if ($cash > 0) {
-                $payment = $this->createPayment($trx, $settlement, $idr, 'cash', $cash, $validated, null);
+                $payment = $this->createPayment($lockedTrx, $settlement, $idr, 'cash', $cash, $validated, null);
                 $this->ledgerPostingService->postPayment($payment);
                 $this->assertCashLedgerPosted($payment->id);
             }
 
             if ($transfer > 0) {
-                $payment = $this->createPayment($trx, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id']);
+                $payment = $this->createPayment($lockedTrx, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id']);
                 $this->ledgerPostingService->postPayment($payment);
                 $this->assertBankLedgerPosted($payment->id);
             }
 
-            $trx->forceFill([
+            // The three ledgers are committed as one unit:
+            // Payment -> Cash/Bank -> Forex Stock.
+            // If stock validation fails (for example insufficient USD), the
+            // exception rolls back the payment and cash/bank ledger as well.
+            $this->forexInventoryPostingService->post($lockedTrx->fresh('items'));
+
+            // Only after every ledger has succeeded is the transaction marked paid.
+            $lockedTrx->forceFill([
                 'status' => 'paid',
                 'settlement_status' => 'paid',
                 'updated_by' => auth()->id(),
             ])->save();
-
-            // Only after payment and cash/bank ledger have succeeded, post forex stock.
-            $this->forexInventoryPostingService->post($trx);
         });
 
         return redirect()->route('teller.index')->with('success', 'Pembayaran transaksi ' . $trx->transaction_no . ' berhasil disimpan.');
