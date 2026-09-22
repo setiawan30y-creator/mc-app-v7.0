@@ -53,14 +53,23 @@ class DashboardController extends Controller
 
         $purchase = 0.0;
         $sales = 0.0;
+        $purchaseCount = 0;
+        $salesCount = 0;
+
         foreach ($transactions as $t) {
+            $hasBuy = false;
+            $hasSell = false;
             foreach ($t->items as $item) {
                 if ($item->direction === 'buy') {
                     $purchase += (float) $item->subtotal;
+                    $hasBuy = true;
                 } elseif ($item->direction === 'sell') {
                     $sales += (float) $item->subtotal;
+                    $hasSell = true;
                 }
             }
+            if ($hasBuy) $purchaseCount++;
+            if ($hasSell) $salesCount++;
         }
 
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
@@ -143,9 +152,6 @@ class DashboardController extends Controller
         $todayBankCredit = (float) $bankCards->sum('today_credit');
         $todayBankDebit = (float) $bankCards->sum('today_debit');
 
-        // Cash balance starts from the latest finalized opening balance.
-        // Only movements on/after that opening date are applied, preventing historical
-        // cash movements from being added on top of an already-finalized opening balance.
         $cashQuery = CashMovement::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->whereHas('currency', fn ($q) => $q->where('code', 'IDR'));
@@ -154,7 +160,7 @@ class DashboardController extends Controller
             $cashQuery->whereDate('created_at', '>=', $openingDate);
         }
 
-        $cashMovements = $cashQuery->get(['direction', 'amount', 'created_at']);
+        $cashMovements = $cashQuery->get(['direction', 'amount', 'transaction_id', 'movement_type', 'created_at']);
         $cashIn = (float) $cashMovements->where('direction', 'in')->sum('amount');
         $cashOut = (float) $cashMovements->where('direction', 'out')->sum('amount');
 
@@ -164,6 +170,14 @@ class DashboardController extends Controller
 
         $todayCashIn = (float) $todayCashMovements->where('direction', 'in')->sum('amount');
         $todayCashOut = (float) $todayCashMovements->where('direction', 'out')->sum('amount');
+
+        // Until a dedicated Expense ledger is introduced, a cash-out movement without
+        // a transaction_id is treated as an operational expense for the dashboard card.
+        $expenseMovements = $todayCashMovements->filter(function ($movement) {
+            return $movement->direction === 'out' && empty($movement->transaction_id);
+        });
+        $expense = (float) $expenseMovements->sum('amount');
+        $expenseCount = $expenseMovements->count();
 
         $cashBalance = $openingCash + $cashIn - $cashOut;
         $forexBalance = $openingForex + $purchase - $sales;
@@ -186,7 +200,11 @@ class DashboardController extends Controller
             ],
             'today' => [
                 'purchase' => $purchase,
+                'purchase_count' => $purchaseCount,
                 'sales' => $sales,
+                'sales_count' => $salesCount,
+                'expense' => $expense,
+                'expense_count' => $expenseCount,
                 'bank_credit' => $todayBankCredit,
                 'bank_debit' => $todayBankDebit,
                 'bank_net' => $todayBankCredit - $todayBankDebit,
