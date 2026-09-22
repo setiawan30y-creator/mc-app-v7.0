@@ -37,6 +37,7 @@ class DashboardController extends Controller
                 ->where('branch_id', $user->branch_id)
                 ->where('status', 'finalized')
                 ->whereDate('balance_date', $openingDate)
+                ->with(['currency', 'variant', 'denomination'])
                 ->get()
             : collect();
 
@@ -44,11 +45,11 @@ class DashboardController extends Controller
         $openingBank = (float) $opening->where('balance_type', 'bank')->sum('amount_rp');
         $openingForex = (float) $opening->where('balance_type', 'forex')->sum('amount_rp');
 
-        $transactions = McTransaction::where('tenant_id', $user->tenant_id)
+        $transactionsToday = McTransaction::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->whereDate('transaction_date', $today->toDateString())
             ->whereIn('status', ['paid', 'completed'])
-            ->with('items')
+            ->with('items.currency')
             ->get();
 
         $purchase = 0.0;
@@ -56,7 +57,7 @@ class DashboardController extends Controller
         $purchaseCount = 0;
         $salesCount = 0;
 
-        foreach ($transactions as $t) {
+        foreach ($transactionsToday as $t) {
             $hasBuy = false;
             $hasSell = false;
             foreach ($t->items as $item) {
@@ -71,6 +72,103 @@ class DashboardController extends Controller
             if ($hasBuy) $purchaseCount++;
             if ($hasSell) $salesCount++;
         }
+
+        // Forex position is quantity-based: Opening Stock + BUY - SELL.
+        // The Rupiah value is calculated from the latest known transaction rate per currency,
+        // falling back to the opening rate when there is no later transaction rate.
+        $forexRows = [];
+        foreach ($opening->where('balance_type', 'forex') as $row) {
+            if (!$row->currency_id || strtoupper((string) ($row->currency?->code ?? '')) === 'IDR') {
+                continue;
+            }
+            $key = implode(':', [
+                (string) $row->currency_id,
+                (string) ($row->currency_variant_id ?? 0),
+                (string) ($row->currency_denomination_id ?? 0),
+            ]);
+            if (!isset($forexRows[$key])) {
+                $forexRows[$key] = [
+                    'currency_id' => $row->currency_id,
+                    'currency' => $row->currency?->code ?? 'VALAS',
+                    'variant_id' => $row->currency_variant_id,
+                    'denomination_id' => $row->currency_denomination_id,
+                    'denomination' => (float) ($row->denomination?->value ?? 0),
+                    'quantity' => 0.0,
+                    'opening_rate' => 0.0,
+                    'rate' => 0.0,
+                ];
+            }
+            $forexRows[$key]['quantity'] += (float) $row->quantity;
+            $forexRows[$key]['opening_rate'] = max($forexRows[$key]['opening_rate'], (float) $row->rate);
+            $forexRows[$key]['rate'] = $forexRows[$key]['opening_rate'];
+        }
+
+        $stockTransactionsQuery = McTransaction::where('tenant_id', $user->tenant_id)
+            ->where('branch_id', $user->branch_id)
+            ->whereIn('status', ['paid', 'completed'])
+            ->with('items.currency');
+
+        if ($openingDate) {
+            $stockTransactionsQuery->whereDate('transaction_date', '>=', $openingDate);
+        }
+
+        $stockTransactions = $stockTransactionsQuery->orderBy('transaction_date')->orderBy('created_at')->get();
+        foreach ($stockTransactions as $transaction) {
+            foreach ($transaction->items as $item) {
+                $currencyCode = strtoupper((string) ($item->currency?->code ?? ''));
+                if (!$item->currency_id || $currencyCode === 'IDR') {
+                    continue;
+                }
+
+                $key = implode(':', [
+                    (string) $item->currency_id,
+                    (string) ($item->currency_variant_id ?? 0),
+                    (string) ($item->currency_denomination_id ?? 0),
+                ]);
+
+                if (!isset($forexRows[$key])) {
+                    $forexRows[$key] = [
+                        'currency_id' => $item->currency_id,
+                        'currency' => $currencyCode,
+                        'variant_id' => $item->currency_variant_id,
+                        'denomination_id' => $item->currency_denomination_id,
+                        'denomination' => (float) ($item->currencyDenomination?->value ?? 0),
+                        'quantity' => 0.0,
+                        'opening_rate' => 0.0,
+                        'rate' => 0.0,
+                    ];
+                }
+
+                $qty = (float) $item->quantity;
+                $forexRows[$key]['quantity'] += $item->direction === 'buy' ? $qty : -$qty;
+                if ((float) $item->rate > 0) {
+                    $forexRows[$key]['rate'] = (float) $item->rate;
+                }
+            }
+        }
+
+        $forexDetail = collect($forexRows)
+            ->filter(fn ($row) => abs($row['quantity']) > 0.00005)
+            ->map(function ($row) {
+                $rate = $row['rate'] > 0 ? $row['rate'] : $row['opening_rate'];
+                $row['rate'] = $rate;
+                $row['amount_rp'] = $row['quantity'] * $rate;
+                return $row;
+            })
+            ->values();
+
+        $forexBalance = (float) $forexDetail->sum('amount_rp');
+
+        $forexByCurrency = $forexDetail
+            ->groupBy('currency')
+            ->map(function ($rows, $currency) {
+                return [
+                    'currency' => $currency,
+                    'quantity' => (float) $rows->sum('quantity'),
+                    'amount_rp' => (float) $rows->sum('amount_rp'),
+                ];
+            })
+            ->values();
 
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
@@ -171,8 +269,6 @@ class DashboardController extends Controller
         $todayCashIn = (float) $todayCashMovements->where('direction', 'in')->sum('amount');
         $todayCashOut = (float) $todayCashMovements->where('direction', 'out')->sum('amount');
 
-        // Until a dedicated Expense ledger is introduced, a cash-out movement without
-        // a transaction_id is treated as an operational expense for the dashboard card.
         $expenseMovements = $todayCashMovements->filter(function ($movement) {
             return $movement->direction === 'out' && empty($movement->transaction_id);
         });
@@ -180,7 +276,6 @@ class DashboardController extends Controller
         $expenseCount = $expenseMovements->count();
 
         $cashBalance = $openingCash + $cashIn - $cashOut;
-        $forexBalance = $openingForex + $purchase - $sales;
         $gross = $cashBalance + $bankBalance + $forexBalance;
 
         $closing = CashClosing::where('tenant_id', $user->tenant_id)
@@ -211,9 +306,15 @@ class DashboardController extends Controller
                 'cash_in' => $todayCashIn,
                 'cash_out' => $todayCashOut,
                 'cash_net' => $todayCashIn - $todayCashOut,
-                'transaction_count' => $transactions->count(),
+                'transaction_count' => $transactionsToday->count(),
             ],
             'bank_accounts' => $bankCards->values(),
+            'forex' => [
+                'balance_rp' => $forexBalance,
+                'opening_rp' => $openingForex,
+                'by_currency' => $forexByCurrency,
+                'details' => $forexDetail,
+            ],
             'position' => [
                 'cash' => $cashBalance,
                 'bank' => $bankBalance,
