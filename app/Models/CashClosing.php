@@ -51,6 +51,31 @@ class CashClosing extends Model
     public function approvedBy(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
     public function closedBy(): BelongsTo { return $this->belongsTo(User::class, 'closed_by'); }
     public function details(): HasMany { return $this->hasMany(CashClosingDetail::class, 'closing_id'); }
+    public function bankDetails(): HasMany { return $this->hasMany(CashClosingBank::class, 'cash_closing_id'); }
+
+    /**
+     * Total system balance from per-account bank closing details.
+     */
+    public function getBankDetailsSystemAmountAttribute(): string
+    {
+        return (string) $this->bankDetails()->sum('system_amount');
+    }
+
+    /**
+     * Total physical/statement balance from per-account bank closing details.
+     */
+    public function getBankDetailsPhysicalAmountAttribute(): string
+    {
+        return (string) $this->bankDetails()->sum('physical_amount');
+    }
+
+    /**
+     * Total difference across all bank accounts.
+     */
+    public function getBankDetailsDifferenceAmountAttribute(): string
+    {
+        return (string) $this->bankDetails()->sum('difference_amount');
+    }
 
     public function isDraft(): bool { return $this->status === 'draft'; }
     public function isSubmitted(): bool { return $this->status === 'submitted'; }
