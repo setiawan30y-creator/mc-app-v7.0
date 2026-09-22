@@ -38,10 +38,17 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::post('/teller/transaction', [TransactionController::class, 'store'])->name('transactions.store');
     Route::get('/teller/transaction/{transaction}/payment', [TransactionPaymentController::class, 'create'])->name('transactions.payments.create');
     Route::post('/teller/transaction/{transaction}/payment', [TransactionPaymentController::class, 'store'])->name('transactions.payments.store');
+
     Route::get('/closing', [CashClosingController::class, 'index'])->name('closing.index');
     Route::get('/closing/create', [CashClosingController::class, 'create'])->name('closing.create');
     Route::post('/closing', [CashClosingController::class, 'store'])->name('closing.store');
     Route::get('/closing/{closing}', [CashClosingController::class, 'show'])->name('closing.show');
+    Route::post('/closing/{closing}/refresh', [CashClosingController::class, 'refresh'])->name('closing.refresh');
+    Route::post('/closing/{closing}/submit', [CashClosingController::class, 'submit'])->name('closing.submit');
+    Route::post('/closing/{closing}/approve', [CashClosingController::class, 'approve'])->name('closing.approve');
+    Route::post('/closing/{closing}/reject', [CashClosingController::class, 'reject'])->name('closing.reject');
+    Route::post('/closing/{closing}/close', [CashClosingController::class, 'close'])->name('closing.close');
+
     Route::get('/gantungan', [GantunganController::class, 'index'])->name('gantungan.index');
     Route::get('/gantungan/create', [GantunganController::class, 'create'])->name('gantungan.create');
     Route::post('/gantungan', [GantunganController::class, 'store'])->name('gantungan.store');
