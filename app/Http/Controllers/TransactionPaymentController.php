@@ -7,6 +7,7 @@ use App\Models\CashMovement;
 use App\Models\Currency;
 use App\Models\McTransaction;
 use App\Models\McTransactionPayment;
+use App\Services\ForexInventoryPostingService;
 use App\Services\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,6 +20,7 @@ class TransactionPaymentController extends Controller
 {
     public function __construct(
         protected LedgerPostingService $ledgerPostingService,
+        protected ForexInventoryPostingService $forexInventoryPostingService,
     ) {
     }
 
@@ -46,10 +48,7 @@ class TransactionPaymentController extends Controller
             ->orderBy('account_number')
             ->get();
 
-        return view('transactions.payment', compact(
-            'trx', 'idr', 'idrSettlement', 'paymentDirection',
-            'requiredAmount', 'paidAmount', 'remainingAmount', 'bankAccounts'
-        ));
+        return view('transactions.payment', compact('trx', 'idr', 'idrSettlement', 'paymentDirection', 'requiredAmount', 'paidAmount', 'remainingAmount', 'bankAccounts'));
     }
 
     public function store(Request $request, string $transaction)
@@ -90,9 +89,7 @@ class TransactionPaymentController extends Controller
         }
 
         if (round($cash + $transfer, 2) !== $remaining) {
-            throw ValidationException::withMessages([
-                'payment' => 'Total Cash + Transfer harus tepat sebesar sisa pembayaran ' . number_format($remaining, 2, ',', '.') . '.',
-            ]);
+            throw ValidationException::withMessages(['payment' => 'Total Cash + Transfer harus tepat sebesar sisa pembayaran ' . number_format($remaining, 2, ',', '.') . '.']);
         }
 
         if ($transfer > 0) {
@@ -118,31 +115,13 @@ class TransactionPaymentController extends Controller
 
         DB::transaction(function () use ($trx, $settlement, $idr, $cash, $transfer, $validated) {
             if ($cash > 0) {
-                $payment = $this->createPayment(
-                    $trx,
-                    $settlement,
-                    $idr,
-                    'cash',
-                    $cash,
-                    $validated,
-                    null
-                );
-
+                $payment = $this->createPayment($trx, $settlement, $idr, 'cash', $cash, $validated, null);
                 $this->ledgerPostingService->postPayment($payment);
                 $this->assertCashLedgerPosted($payment->id);
             }
 
             if ($transfer > 0) {
-                $payment = $this->createPayment(
-                    $trx,
-                    $settlement,
-                    $idr,
-                    'transfer',
-                    $transfer,
-                    $validated,
-                    $validated['bank_account_id']
-                );
-
+                $payment = $this->createPayment($trx, $settlement, $idr, 'transfer', $transfer, $validated, $validated['bank_account_id']);
                 $this->ledgerPostingService->postPayment($payment);
                 $this->assertBankLedgerPosted($payment->id);
             }
@@ -152,20 +131,16 @@ class TransactionPaymentController extends Controller
                 'settlement_status' => 'paid',
                 'updated_by' => auth()->id(),
             ])->save();
+
+            // Only after payment and cash/bank ledger have succeeded, post forex stock.
+            $this->forexInventoryPostingService->post($trx);
         });
 
         return redirect()->route('teller.index')->with('success', 'Pembayaran transaksi ' . $trx->transaction_no . ' berhasil disimpan.');
     }
 
-    protected function createPayment(
-        McTransaction $trx,
-        $settlement,
-        Currency $idr,
-        string $method,
-        float $amount,
-        array $validated,
-        ?string $bankAccountId
-    ): McTransactionPayment {
+    protected function createPayment(McTransaction $trx, $settlement, Currency $idr, string $method, float $amount, array $validated, ?string $bankAccountId): McTransactionPayment
+    {
         return McTransactionPayment::query()->create([
             'id' => (string) Str::ulid(),
             'transaction_id' => $trx->id,
@@ -196,7 +171,6 @@ class TransactionPaymentController extends Controller
     protected function assertBankLedgerPosted(string $paymentId): void
     {
         $payment = McTransactionPayment::query()->find($paymentId);
-
         if (!$payment || !$payment->bank_mutation_id) {
             throw new RuntimeException('Payment transfer berhasil dibuat tetapi mutasi bank tidak terbentuk. Transaksi dibatalkan untuk mencegah saldo tidak sinkron.');
         }
@@ -205,7 +179,6 @@ class TransactionPaymentController extends Controller
     protected function transaction(string $id): McTransaction
     {
         $user = auth()->user();
-
         return McTransaction::query()
             ->whereKey($id)
             ->where('tenant_id', $user->tenant_id)
