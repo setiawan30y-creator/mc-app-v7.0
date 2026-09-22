@@ -74,7 +74,6 @@
             <div class="card-body">
                 <div class="mutation-title">Riwayat Mutasi Bank</div>
                 <div class="mutation-subtitle">Gunakan form ini untuk memilih akun bank yang ingin dilihat. Kosongkan akun untuk melihat semua bank.</div>
-
                 <form method="GET" action="{{ route('settings.bank-accounts.index') }}" class="mutation-filter">
                     <div class="row g-2 align-items-end">
                         <div class="col-lg-5 col-md-6">
@@ -82,81 +81,27 @@
                             <select name="bank_account_id" id="bank_account_id" class="form-select">
                                 <option value="">Semua Bank</option>
                                 @foreach($accounts as $account)
-                                    <option value="{{ $account->id }}" @selected($selectedBankAccount?->id === $account->id)>
-                                        {{ $account->bank_name }} — {{ $account->account_number }} — {{ $account->account_name }}
-                                    </option>
+                                    <option value="{{ $account->id }}" @selected($selectedBankAccount?->id === $account->id)>{{ $account->bank_name }} — {{ $account->account_number }} — {{ $account->account_name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-lg-2 col-md-3">
-                            <label for="date_from" class="form-label mb-1">Dari</label>
-                            <input type="date" name="date_from" id="date_from" class="form-control" value="{{ $dateFrom }}">
-                        </div>
-                        <div class="col-lg-2 col-md-3">
-                            <label for="date_to" class="form-label mb-1">Sampai</label>
-                            <input type="date" name="date_to" id="date_to" class="form-control" value="{{ $dateTo }}">
-                        </div>
-                        <div class="col-lg-3 col-md-12 d-flex gap-2">
-                            <button type="submit" class="btn btn-primary flex-fill">Lihat Mutasi</button>
-                            <a href="{{ route('settings.bank-accounts.index') }}" class="btn btn-outline-secondary">Reset</a>
-                        </div>
+                        <div class="col-lg-2 col-md-3"><label for="date_from" class="form-label mb-1">Dari</label><input type="date" name="date_from" id="date_from" class="form-control" value="{{ $dateFrom }}"></div>
+                        <div class="col-lg-2 col-md-3"><label for="date_to" class="form-label mb-1">Sampai</label><input type="date" name="date_to" id="date_to" class="form-control" value="{{ $dateTo }}"></div>
+                        <div class="col-lg-3 col-md-12 d-flex gap-2"><button type="submit" class="btn btn-primary flex-fill">Lihat Mutasi</button><a href="{{ route('settings.bank-accounts.index') }}" class="btn btn-outline-secondary">Reset</a></div>
                     </div>
                 </form>
             </div>
-
             <div class="card-body border-top">
-                @if($selectedBankAccount)
-                    <div class="alert alert-primary py-2 mb-3">
-                        Menampilkan mutasi: <strong>{{ $selectedBankAccount->bank_name }}</strong> — {{ $selectedBankAccount->account_number }}
-                    </div>
-                @endif
-
+                @if($selectedBankAccount)<div class="alert alert-primary py-2 mb-3">Menampilkan mutasi: <strong>{{ $selectedBankAccount->bank_name }}</strong> — {{ $selectedBankAccount->account_number }}</div>@endif
                 @if($mutations->isEmpty())
                     <div class="mutation-empty">Tidak ada mutasi sesuai filter.</div>
                 @else
-                    <div class="table-responsive">
-                        <table class="table table-hover mutation-table mb-0">
-                            <thead class="table-light">
-                                <tr><th>Tanggal</th><th>Bank / Rekening</th><th>Referensi</th><th>Keterangan</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end">Saldo</th><th>Status</th></tr>
-                            </thead>
-                            <tbody>
-                            @foreach($mutations as $mutation)
-                                <tr>
-                                    <td>{{ optional($mutation->transaction_date)->format('d/m/Y H:i') ?? '-' }}</td>
-                                    <td><div class="mutation-bank">{{ $mutation->bankAccount?->bank_name ?? 'Bank' }}</div><div class="mutation-account">{{ $mutation->bankAccount?->account_number ?? '-' }}</div></td>
-                                    <td class="mutation-ref">{{ $mutation->reference ?: '-' }}</td>
-                                    <td>{{ $mutation->description ?: ($mutation->source ?: '-') }}</td>
-                                    <td class="text-end mutation-debit">{{ (float) $mutation->debit > 0 ? '- Rp '.number_format((float)$mutation->debit, 2, ',', '.') : '-' }}</td>
-                                    <td class="text-end mutation-credit">{{ (float) $mutation->credit > 0 ? '+ Rp '.number_format((float)$mutation->credit, 2, ',', '.') : '-' }}</td>
-                                    <td class="text-end mutation-balance">Rp {{ number_format((float)$mutation->balance, 2, ',', '.') }}</td>
-                                    <td>
-                                        @if($mutation->reconciliation_status === 'matched')<span class="badge bg-success">Matched</span>
-                                        @elseif($mutation->reconciliation_status === 'manual')<span class="badge bg-info text-dark">Manual</span>
-                                        @elseif($mutation->reconciliation_status === 'unmatched')<span class="badge bg-warning text-dark">Unmatched</span>
-                                        @else<span class="badge bg-secondary">{{ $mutation->reconciliation_status ?: '-' }}</span>@endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="pt-3">{{ $mutations->links() }}</div>
+                    <div class="table-responsive"><table class="table table-hover mutation-table mb-0"><thead class="table-light"><tr><th>Tanggal</th><th>Bank / Rekening</th><th>Referensi</th><th>Keterangan</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end">Saldo</th><th>Status</th></tr></thead><tbody>
+                    @foreach($mutations as $mutation)
+                        <tr><td>{{ optional($mutation->transaction_date)->format('d/m/Y H:i') ?? '-' }}</td><td><div class="mutation-bank">{{ $mutation->bankAccount?->bank_name ?? 'Bank' }}</div><div class="mutation-account">{{ $mutation->bankAccount?->account_number ?? '-' }}</div></td><td class="mutation-ref">{{ $mutation->reference ?: '-' }}</td><td>{{ $mutation->description ?: ($mutation->source ?: '-') }}</td><td class="text-end mutation-debit">{{ (float) $mutation->debit > 0 ? '- Rp '.number_format((float)$mutation->debit, 2, ',', '.') : '-' }}</td><td class="text-end mutation-credit">{{ (float) $mutation->credit > 0 ? '+ Rp '.number_format((float)$mutation->credit, 2, ',', '.') : '-' }}</td><td class="text-end mutation-balance">Rp {{ number_format((float)$mutation->balance, 2, ',', '.') }}</td><td>@if($mutation->reconciliation_status === 'matched')<span class="badge bg-success">Matched</span>@elseif($mutation->reconciliation_status === 'manual')<span class="badge bg-info text-dark">Manual</span>@elseif($mutation->reconciliation_status === 'unmatched')<span class="badge bg-warning text-dark">Unmatched</span>@else<span class="badge bg-secondary">{{ $mutation->reconciliation_status ?: '-' }}</span>@endif</td></tr>
+                    @endforeach
+                    </tbody></table></div><div class="pt-3">{{ $mutations->links() }}</div>
                 @endif
-            </div>
-        </div>
-
-        <div class="card shadow-sm border-0 mt-4">
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light"><tr><th>Bank</th><th>Nama Rekening</th><th>Nomor Rekening</th><th>Mata Uang</th><th>Status</th><th>Saldo Berjalan</th><th class="text-end">Aksi</th></tr></thead>
-                        <tbody>
-                        @foreach($accounts as $account)
-                            <tr><td><strong>{{ $account->bank_name }}</strong>@if($account->bank_code)<div class="small text-muted">{{ $account->bank_code }}</div>@endif</td><td>{{ $account->account_name }}</td><td><code>{{ $account->account_number }}</code></td><td>@if($account->currency)<strong>{{ $account->currency->code }}</strong><div class="small text-muted">{{ $account->currency->name }}</div>@else-@endif</td><td>@if($account->is_active)<span class="badge bg-success">Aktif</span>@else<span class="badge bg-secondary">Nonaktif</span>@endif</td><td><strong>{{ number_format((float)$account->calculated_balance, 2, ',', '.') }}</strong></td><td class="text-end"><div class="btn-group"><a href="{{ route('settings.bank-accounts.show', $account->id) }}" class="btn btn-sm btn-outline-primary">Detail</a><a href="{{ route('settings.bank-accounts.edit', $account->id) }}" class="btn btn-sm btn-outline-secondary">Edit</a></div></td></tr>
-                        @endforeach
-                        </tbody>
-                    </table>
-                </div>
             </div>
         </div>
     @endif
