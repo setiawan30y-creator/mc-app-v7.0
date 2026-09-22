@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\McTransaction;
 use App\Models\McTransactionPayment;
 use App\Models\RateSnapshot;
+use App\Services\ForexInventoryPostingService;
 use App\Services\LedgerPostingService;
 use App\Services\McTransactionService;
 use Illuminate\Http\JsonResponse;
@@ -106,7 +107,7 @@ class TransactionController extends Controller
         ]);
     }
 
-    public function store(Request $request, McTransactionService $transactionService, LedgerPostingService $ledgerPostingService)
+    public function store(Request $request, McTransactionService $transactionService, LedgerPostingService $ledgerPostingService, ForexInventoryPostingService $forexInventoryPostingService)
     {
         $user = auth()->user();
 
@@ -138,7 +139,7 @@ class TransactionController extends Controller
         ]);
 
         try {
-            $transaction = DB::transaction(function () use ($validated, $transactionService, $ledgerPostingService, $user) {
+            $transaction = DB::transaction(function () use ($validated, $transactionService, $ledgerPostingService, $forexInventoryPostingService, $user) {
                 $transaction = $transactionService->create([
                     'tenant_id' => $user->tenant_id,
                     'branch_id' => $user->branch_id,
@@ -163,9 +164,7 @@ class TransactionController extends Controller
                 if ($required > 0) {
                     $method = $validated['payment_method'] ?? null;
                     if (!$method) {
-                        throw ValidationException::withMessages([
-                            'payment_method' => 'Metode pembayaran wajib dipilih.',
-                        ]);
+                        throw ValidationException::withMessages(['payment_method' => 'Metode pembayaran wajib dipilih.']);
                     }
 
                     $cash = round((float) ($validated['cash_amount'] ?? 0), 2);
@@ -180,16 +179,12 @@ class TransactionController extends Controller
                     }
 
                     if (round($cash + $transfer, 2) !== round($required, 2)) {
-                        throw ValidationException::withMessages([
-                            'payment_method' => 'Total Cash + Transfer harus tepat sebesar Rp ' . number_format($required, 2, ',', '.') . '.',
-                        ]);
+                        throw ValidationException::withMessages(['payment_method' => 'Total Cash + Transfer harus tepat sebesar Rp ' . number_format($required, 2, ',', '.') . '.']);
                     }
 
                     if ($transfer > 0) {
                         if (empty($validated['bank_account_id'])) {
-                            throw ValidationException::withMessages([
-                                'bank_account_id' => 'Rekening tujuan wajib dipilih untuk transfer.',
-                            ]);
+                            throw ValidationException::withMessages(['bank_account_id' => 'Rekening tujuan wajib dipilih untuk transfer.']);
                         }
 
                         $bank = BankAccount::query()
@@ -200,9 +195,7 @@ class TransactionController extends Controller
                             ->first();
 
                         if (!$bank) {
-                            throw ValidationException::withMessages([
-                                'bank_account_id' => 'Rekening bank tidak ditemukan atau tidak aktif.',
-                            ]);
+                            throw ValidationException::withMessages(['bank_account_id' => 'Rekening bank tidak ditemukan atau tidak aktif.']);
                         }
                     }
 
@@ -223,6 +216,9 @@ class TransactionController extends Controller
                         'settlement_status' => 'paid',
                         'updated_by' => $user->id,
                     ])->save();
+
+                    // Payment is the commit point for the ERP inventory side.
+                    $forexInventoryPostingService->post($transaction);
                 }
 
                 return $transaction;
@@ -269,7 +265,6 @@ class TransactionController extends Controller
     protected function assertBankLedgerPosted(string $paymentId): void
     {
         $payment = McTransactionPayment::query()->find($paymentId);
-
         if (!$payment || !$payment->bank_mutation_id) {
             throw new RuntimeException('Payment transfer berhasil dibuat tetapi mutasi bank tidak terbentuk. Transaksi dibatalkan untuk mencegah saldo tidak sinkron.');
         }
