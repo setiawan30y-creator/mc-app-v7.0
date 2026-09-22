@@ -19,6 +19,7 @@ use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\ComplianceThresholdRuleController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransactionCustomerController;
+use App\Http\Controllers\TransactionHistoryController;
 use App\Http\Controllers\TransactionPaymentController;
 use App\Http\Controllers\Settings\IsoCurrencyController;
 use App\Http\Controllers\TellerController;
@@ -33,6 +34,7 @@ Route::middleware(['auth','tenant.context','branch.context'])->group(function ()
     Route::get('/dashboard/data', [DashboardController::class, 'data'])->middleware('permission:dashboard.view')->name('dashboard.data');
     Route::get('/teller', [TellerController::class, 'index'])->name('teller.index');
     Route::get('/teller/transaction/create', [TransactionController::class, 'create'])->name('transactions.create');
+    Route::get('/teller/transaction/history', [TransactionHistoryController::class, 'index'])->name('transactions.history');
     Route::post('/teller/transaction/customer', [TransactionCustomerController::class, 'store'])->middleware('permission:customer.create')->name('transactions.customer-store');
     Route::get('/teller/transaction/customer/{customer}/history', [TransactionController::class, 'customerHistory'])->name('transactions.customer-history');
     Route::post('/teller/transaction', [TransactionController::class, 'store'])->name('transactions.store');
