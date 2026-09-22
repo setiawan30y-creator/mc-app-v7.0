@@ -40,9 +40,26 @@ class CashClosingReconciliationService
     public function apply(CashClosing $closing): CashClosing
     {
         $result = $this->calculate($closing->tenant_id, $closing->branch_id, $closing->business_date->toDateString(), $closing->shift);
-        $physicalCash = (float) $closing->physical_cash_amount; $physicalBank = (float) $closing->bank_physical_amount;
-        $cashDifference = round($physicalCash - $result['expected_cash_amount'], 2); $bankDifference = round($physicalBank - $result['bank_system_amount'], 2);
-        $closing->update(['opening_cash_amount'=>$result['opening_cash_amount'],'expected_cash_amount'=>$result['expected_cash_amount'],'expected_amount'=>$result['expected_cash_amount'],'physical_amount'=>$physicalCash,'cash_difference_amount'=>$cashDifference,'difference_amount'=>round($cashDifference+$bankDifference,2),'hanging_amount'=>$result['hanging_amount'],'bank_system_amount'=>$result['bank_system_amount'],'bank_difference_amount'=>$bankDifference]);
+        $physicalCash = (float) $closing->physical_cash_amount;
+        $cashDifference = round($physicalCash - $result['expected_cash_amount'], 2);
+
+        $bankDetails = $closing->bankDetails()->with('bankAccount')->get();
+        if ($bankDetails->isNotEmpty()) {
+            foreach ($bankDetails as $detail) {
+                $system = (float) $detail->bankAccount->calculated_balance;
+                $physical = (float) $detail->physical_amount;
+                $detail->update(['system_amount'=>$system,'difference_amount'=>round($physical-$system,2)]);
+            }
+            $physicalBank = (float) $closing->bankDetails()->sum('physical_amount');
+            $bankSystem = (float) $closing->bankDetails()->sum('system_amount');
+            $bankDifference = round($physicalBank - $bankSystem, 2);
+        } else {
+            $physicalBank = (float) $closing->bank_physical_amount;
+            $bankSystem = (float) $result['bank_system_amount'];
+            $bankDifference = round($physicalBank - $bankSystem, 2);
+        }
+
+        $closing->update(['opening_cash_amount'=>$result['opening_cash_amount'],'expected_cash_amount'=>$result['expected_cash_amount'],'expected_amount'=>$result['expected_cash_amount'],'physical_amount'=>$physicalCash,'cash_difference_amount'=>$cashDifference,'difference_amount'=>round($cashDifference+$bankDifference,2),'hanging_amount'=>$result['hanging_amount'],'bank_system_amount'=>round($bankSystem,2),'bank_physical_amount'=>round($physicalBank,2),'bank_difference_amount'=>$bankDifference]);
         foreach ($closing->details()->get() as $detail) {
             $inventory = $result['inventory']->first(function ($row) use ($detail) { return (string)$row->currency_id === (string)$detail->currency_id && (string)($row->currency_variant_id ?? 0) === (string)($detail->currency_variant_id ?? 0) && (string)($row->currency_denomination_id ?? 0) === (string)($detail->currency_denomination_id ?? 0); });
             $systemQuantity = $inventory ? (float)$inventory->quantity : 0.0; $systemAmount = $inventory ? (float)$inventory->total_amount : 0.0; $physicalQuantity = (float)$detail->physical_quantity; $physicalAmount = (float)$detail->physical_amount;
