@@ -5,7 +5,8 @@
     <nav class="sidebar-nav">
         <div class="nav-section"><div class="nav-section-title">WORKSPACE</div>
             <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
-            <a href="{{ route('transactions.create') }}" class="nav-item {{ request()->routeIs('transactions.*') ? 'active' : '' }}"><span class="nav-icon">⇄</span><span class="nav-text">Transaksi</span></a>
+            <a href="{{ route('transactions.create') }}" class="nav-item {{ request()->routeIs('transactions.create') ? 'active' : '' }}"><span class="nav-icon">⇄</span><span class="nav-text">Transaksi</span></a>
+            <a href="{{ route('transactions.history') }}" class="nav-item {{ request()->routeIs('transactions.history') ? 'active' : '' }}"><span class="nav-icon">◷</span><span class="nav-text">Riwayat Transaksi</span></a>
             <a href="{{ route('customers.index') }}" class="nav-item {{ request()->routeIs('customers.*') ? 'active' : '' }}"><span class="nav-icon">♙</span><span class="nav-text">Nasabah</span></a>
             <a href="{{ route('settings.compliance-threshold.index') }}" class="nav-item {{ request()->routeIs('settings.compliance-threshold.*') ? 'active' : '' }}"><span class="nav-icon">✓</span><span class="nav-text">KYC & Compliance</span></a>
         </div>
