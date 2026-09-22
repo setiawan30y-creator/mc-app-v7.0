@@ -17,7 +17,7 @@ class CashClosingController extends Controller
 
     public function index(Request $request)
     {
-        $user = auth()->user(); $query = CashClosing::query()->with(['preparedBy','closedBy'])->where('tenant_id',$user->tenant_id);
+        $user = auth()->user(); $query = CashClosing::query()->with(['preparedBy','closedBy','approvedBy'])->where('tenant_id',$user->tenant_id);
         if ($user->branch_id) $query->where('branch_id',$user->branch_id);
         if ($request->filled('date')) $query->whereDate('business_date',$request->date);
         if ($request->filled('shift')) $query->where('shift',$request->shift);
@@ -43,7 +43,7 @@ class CashClosingController extends Controller
         if($alreadyClosed) return back()->withInput()->withErrors(['shift'=>'Closing untuk tanggal dan shift tersebut sudah dibuat dan tidak dapat dibuat ulang.']);
         $closing=DB::transaction(function() use($request,$validated,$user){
             $prefix='CLS-'.str_replace('-','',$validated['business_date']); $sequence=CashClosing::query()->where('tenant_id',$user->tenant_id)->where('branch_id',$user->branch_id)->whereDate('business_date',$validated['business_date'])->count()+1;
-            $closing=CashClosing::create(['id'=>(string)Str::ulid(),'tenant_id'=>$user->tenant_id,'branch_id'=>$user->branch_id,'business_date'=>$validated['business_date'],'shift'=>$validated['shift'],'closing_type'=>$validated['closing_type'],'closing_no'=>$prefix.'-'.str_pad((string)$sequence,2,'0',STR_PAD_LEFT),'closing_date'=>now(),'status'=>'draft','notes'=>$validated['notes']??null,'bank_physical_amount'=>(float)($validated['physical_bank_amount']??0)]);
+            $closing=CashClosing::create(['id'=>(string)Str::ulid(),'tenant_id'=>$user->tenant_id,'branch_id'=>$user->branch_id,'business_date'=>$validated['business_date'],'shift'=>$validated['shift'],'closing_type'=>$validated['closing_type'],'closing_no'=>$prefix.'-'.str_pad((string)$sequence,2,'0',STR_PAD_LEFT),'closing_date'=>now(),'status'=>'draft','notes'=>$validated['notes']??null,'prepared_by'=>$user->id,'bank_physical_amount'=>(float)($validated['physical_bank_amount']??0)]);
 
             $bankPhysical=$request->input('bank_physical',[]); $bankNotes=$request->input('bank_notes',[]);
             $accounts=BankAccount::query()->active()->where('tenant_id',$user->tenant_id)->when($user->branch_id,fn($q)=>$q->where('branch_id',$user->branch_id))->whereIn('id',array_keys($bankPhysical))->get();
@@ -62,10 +62,16 @@ class CashClosingController extends Controller
         return redirect()->route('closing.show',$closing)->with('success','Draft closing berhasil dibuat dan rekonsiliasi Kas, Bank per rekening, serta stok valas sudah dihitung.');
     }
 
-    public function refresh(CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing yang sudah ditutup tidak dapat dihitung ulang.');$this->reconciliation->apply($closing);return back()->with('success','Rekonsiliasi closing berhasil dihitung ulang dari ledger terbaru.');}
+    public function refresh(CashClosing $closing){$this->authorizeScope($closing);abort_if(in_array($closing->status,['approved','closed']),422,'Closing yang sudah disetujui tidak dapat dihitung ulang.');$this->reconciliation->apply($closing);return back()->with('success','Rekonsiliasi closing berhasil dihitung ulang dari ledger terbaru.');}
 
-    public function close(CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing sudah ditutup.');abort_if($closing->status==='rejected',422,'Closing yang ditolak tidak dapat ditutup.');$closing=$this->reconciliation->apply($closing);if(!$this->reconciliation->canClose($closing))return back()->withErrors(['closing'=>'Closing belum balance. Kas, setiap rekening bank, dan stok valas harus balance sebelum closing dapat dikunci.']);$closing->update(['status'=>'closed','closed_by'=>auth()->id(),'closed_at'=>now()]);return redirect()->route('closing.show',$closing)->with('success','Closing berhasil ditutup dan dikunci.');}
+    public function submit(CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing sudah ditutup.');abort_if($closing->status!=='draft',422,'Hanya draft yang dapat diajukan.');$closing=$this->reconciliation->apply($closing);$closing->update(['status'=>'submitted']);return back()->with('success','Closing berhasil diajukan untuk approval.');}
 
-    public function show(CashClosing $closing){$this->authorizeScope($closing);if(!$closing->isClosed())$this->reconciliation->apply($closing);$closing->load(['details.currency','details.currencyVariant','details.currencyDenomination','bankDetails.bankAccount','preparedBy','closedBy']);return view('closing.show',compact('closing'));}
+    public function approve(CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing sudah ditutup.');abort_if($closing->status!=='submitted',422,'Closing harus berstatus submitted sebelum approval.');$closing=$this->reconciliation->apply($closing);if(!$this->reconciliation->canClose($closing))return back()->withErrors(['closing'=>'Closing belum balance. Kas, setiap rekening bank, dan stok valas harus balance sebelum approval.']);$closing->update(['status'=>'approved','approved_by'=>auth()->id(),'approved_at'=>now(),'rejected_at'=>null,'rejection_reason'=>null]);return back()->with('success','Closing berhasil disetujui. Selanjutnya closing dapat dikunci.');}
+
+    public function reject(Request $request, CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing yang sudah ditutup tidak dapat ditolak.');abort_if(!in_array($closing->status,['submitted','approved']),422,'Closing belum dapat ditolak.');$validated=$request->validate(['rejection_reason'=>['required','string','max:2000']]);$closing->update(['status'=>'rejected','rejected_at'=>now(),'rejection_reason'=>$validated['rejection_reason'],'approved_by'=>null,'approved_at'=>null]);return back()->with('success','Closing ditolak dan dapat diperbaiki lalu diajukan kembali.');}
+
+    public function close(CashClosing $closing){$this->authorizeScope($closing);abort_if($closing->isClosed(),422,'Closing sudah ditutup.');abort_if($closing->status!=='approved',422,'Closing harus berstatus approved sebelum dikunci.');$closing=$this->reconciliation->apply($closing);if(!$this->reconciliation->canClose($closing))return back()->withErrors(['closing'=>'Closing tidak lagi balance. Approval dibatalkan secara manual melalui workflow koreksi sebelum dapat dikunci.']);$closing->update(['status'=>'closed','closed_by'=>auth()->id(),'closed_at'=>now()]);return redirect()->route('closing.show',$closing)->with('success','Closing berhasil ditutup dan dikunci.');}
+
+    public function show(CashClosing $closing){$this->authorizeScope($closing);if(!$closing->isClosed()&&!$closing->isApproved())$this->reconciliation->apply($closing);$closing->load(['details.currency','details.currencyVariant','details.currencyDenomination','bankDetails.bankAccount','preparedBy','approvedBy','closedBy']);return view('closing.show',compact('closing'));}
     private function authorizeScope(CashClosing $closing):void{$user=auth()->user();abort_unless($closing->tenant_id===$user->tenant_id&&(!$user->branch_id||$closing->branch_id===$user->branch_id),403);}
 }
