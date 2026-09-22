@@ -73,9 +73,6 @@ class DashboardController extends Controller
             if ($hasSell) $salesCount++;
         }
 
-        // Forex position is quantity-based: Opening Stock + BUY - SELL.
-        // The Rupiah value is calculated from the latest known transaction rate per currency,
-        // falling back to the opening rate when there is no later transaction rate.
         $forexRows = [];
         foreach ($opening->where('balance_type', 'forex') as $row) {
             if (!$row->currency_id || strtoupper((string) ($row->currency?->code ?? '')) === 'IDR') {
@@ -184,6 +181,7 @@ class DashboardController extends Controller
             $debit = 0.0;
             $todayCredit = 0.0;
             $todayDebit = 0.0;
+            $todayMutationCount = 0;
 
             foreach ($a->mutations as $m) {
                 $c = (float) $m->credit;
@@ -196,6 +194,7 @@ class DashboardController extends Controller
                 if ($md->isSameDay($today)) {
                     $todayCredit += $c;
                     $todayDebit += $d;
+                    $todayMutationCount++;
                 }
             }
 
@@ -211,11 +210,11 @@ class DashboardController extends Controller
                 'debit' => $debit,
                 'today_credit' => $todayCredit,
                 'today_debit' => $todayDebit,
+                'today_mutation_count' => $todayMutationCount,
                 'balance' => $balance,
             ];
         })->values();
 
-        // Legacy fallback only. New transfer payments are required to have a real bank mutation.
         $payments = McTransactionPayment::where('payment_method', 'transfer')
             ->where('payment_status', 'confirmed')
             ->whereNotNull('bank_account_id')
@@ -243,12 +242,14 @@ class DashboardController extends Controller
 
             if ($p->paid_at && Carbon::parse($p->paid_at, $tz)->isSameDay($today)) {
                 $bankCards[$i][$credit ? 'today_credit' : 'today_debit'] += $amount;
+                $bankCards[$i]['today_mutation_count']++;
             }
         }
 
         $bankBalance = (float) $bankCards->sum('balance');
         $todayBankCredit = (float) $bankCards->sum('today_credit');
         $todayBankDebit = (float) $bankCards->sum('today_debit');
+        $todayBankMutationCount = (int) $bankCards->sum('today_mutation_count');
 
         $cashQuery = CashMovement::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
@@ -303,6 +304,7 @@ class DashboardController extends Controller
                 'bank_credit' => $todayBankCredit,
                 'bank_debit' => $todayBankDebit,
                 'bank_net' => $todayBankCredit - $todayBankDebit,
+                'bank_mutation_count' => $todayBankMutationCount,
                 'cash_in' => $todayCashIn,
                 'cash_out' => $todayCashOut,
                 'cash_net' => $todayCashIn - $todayCashOut,
