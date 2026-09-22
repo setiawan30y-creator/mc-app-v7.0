@@ -8,7 +8,6 @@ use App\Models\CashInventory;
 use App\Models\CashMovement;
 use App\Models\McTransaction;
 use App\Models\McTransactionItem;
-use App\Models\McTransactionPayment;
 use App\Models\OpeningBalance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +25,6 @@ class DashboardController extends Controller
         $user = $request->user();
         $tz = config('app.timezone', 'Asia/Jakarta');
         $today = Carbon::now($tz)->startOfDay();
-        $now = Carbon::now($tz);
 
         $openingDate = OpeningBalance::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
@@ -75,9 +73,6 @@ class DashboardController extends Controller
             if ($hasSell) $salesCount++;
         }
 
-        // ERP source of truth for forex quantity: cash_inventory.
-        // Valuation in IDR uses the latest transaction rate for the same denomination,
-        // falling back to the opening-balance rate when no transaction rate exists yet.
         $inventories = CashInventory::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
@@ -141,6 +136,10 @@ class DashboardController extends Controller
             })
             ->values();
 
+        // Bank position is calculated from ONE ERP source of truth: bank_mutations.
+        // Opening balance is the baseline; only mutations on/after the active opening date
+        // are applied. We intentionally do not add McTransactionPayment again here,
+        // because confirmed transfers are already posted as BankMutation by LedgerPostingService.
         $accounts = BankAccount::where('tenant_id', $user->tenant_id)
             ->where('branch_id', $user->branch_id)
             ->where('is_active', true)
@@ -149,13 +148,16 @@ class DashboardController extends Controller
             ->orderBy('account_number')
             ->get();
 
-        $bankCards = $accounts->map(function ($a) use ($tz, $today, $opening) {
-            $openingForAccount = $opening
+        $bankCards = $accounts->map(function ($a) use ($tz, $today, $opening, $openingDate) {
+            $openingForAccount = (float) $opening
                 ->where('balance_type', 'bank')
                 ->where('bank_account_id', $a->id)
                 ->sum('amount_rp');
-            $openingForAccount = (float) $openingForAccount;
-            $balance = $openingForAccount > 0 ? $openingForAccount : (float) $a->opening_balance;
+
+            $balance = $openingDate
+                ? $openingForAccount
+                : (float) $a->opening_balance;
+
             $credit = 0.0;
             $debit = 0.0;
             $todayCredit = 0.0;
@@ -163,13 +165,20 @@ class DashboardController extends Controller
             $todayMutationCount = 0;
 
             foreach ($a->mutations as $m) {
+                $md = Carbon::parse($m->transaction_date, $tz);
+
+                // Do not replay mutations that belong to a period before the
+                // finalized opening balance currently used by the dashboard.
+                if ($openingDate && $md->lt(Carbon::parse($openingDate, $tz)->startOfDay())) {
+                    continue;
+                }
+
                 $c = (float) $m->credit;
                 $d = (float) $m->debit;
                 $balance += $c - $d;
                 $credit += $c;
                 $debit += $d;
 
-                $md = Carbon::parse($m->transaction_date, $tz);
                 if ($md->isSameDay($today)) {
                     $todayCredit += $c;
                     $todayDebit += $d;
@@ -193,32 +202,6 @@ class DashboardController extends Controller
                 'balance' => $balance,
             ];
         })->values();
-
-        $payments = McTransactionPayment::where('payment_method', 'transfer')
-            ->where('payment_status', 'confirmed')
-            ->whereNotNull('bank_account_id')
-            ->where('paid_at', '<=', $now)
-            ->whereHas('transaction', fn ($q) => $q
-                ->where('tenant_id', $user->tenant_id)
-                ->where('branch_id', $user->branch_id))
-            ->with('settlement:id,direction')
-            ->get(['id', 'settlement_id', 'amount', 'paid_at', 'bank_account_id', 'bank_mutation_id']);
-
-        foreach ($payments as $p) {
-            if ($p->bank_mutation_id || !$p->settlement) continue;
-            $i = $bankCards->search(fn ($a) => (string) $a['id'] === (string) $p->bank_account_id);
-            if ($i === false) continue;
-
-            $amount = (float) $p->amount;
-            $credit = $p->settlement->direction === 'customer_pays';
-            $bankCards[$i]['balance'] += $credit ? $amount : -$amount;
-            $bankCards[$i][$credit ? 'credit' : 'debit'] += $amount;
-
-            if ($p->paid_at && Carbon::parse($p->paid_at, $tz)->isSameDay($today)) {
-                $bankCards[$i][$credit ? 'today_credit' : 'today_debit'] += $amount;
-                $bankCards[$i]['today_mutation_count']++;
-            }
-        }
 
         $bankBalance = (float) $bankCards->sum('balance');
         $todayBankCredit = (float) $bankCards->sum('today_credit');
