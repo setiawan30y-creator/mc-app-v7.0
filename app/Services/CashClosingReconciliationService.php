@@ -4,20 +4,19 @@ namespace App\Services;
 
 use App\Models\BankMutation;
 use App\Models\CashClosing;
+use App\Models\CashInventory;
 use App\Models\CashMovement;
 use App\Models\Currency;
 use App\Models\Gantungan;
+use App\Models\OpeningBalance;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class CashClosingReconciliationService
 {
     /**
-     * Build the operational closing numbers from ledger sources.
-     *
-     * Cash: previous physical closing + cash movements for the period.
-     * Bank: bank mutations for the period.
-     * Gantungan: outstanding operational hanging amount at the business date.
+     * Build the closing position from the ERP ledgers.
+     * Cash starts from the latest closed physical cash; if none exists,
+     * it starts from the finalized ERP opening balance for cash.
      */
     public function calculate(string $tenantId, ?string $branchId, string $businessDate, string $shift): array
     {
@@ -41,7 +40,15 @@ class CashClosingReconciliationService
             ->orderByDesc('closed_at')
             ->first();
 
-        $opening = $previous ? (float) $previous->physical_cash_amount : 0.0;
+        $openingCash = $previous
+            ? (float) $previous->physical_cash_amount
+            : (float) OpeningBalance::query()
+                ->where('tenant_id', $tenantId)
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                ->where('status', 'finalized')
+                ->where('balance_type', 'cash')
+                ->whereDate('balance_date', '<=', $businessDate)
+                ->sum('amount_rp');
 
         $idr = Currency::query()->where('code', 'IDR')->first();
         $cashIn = 0.0;
@@ -65,7 +72,7 @@ class CashClosingReconciliationService
             }
         }
 
-        $expectedCash = round($opening + $cashIn - $cashOut, 2);
+        $expectedCash = round($openingCash + $cashIn - $cashOut, 2);
 
         $bankQuery = BankMutation::query()
             ->where('tenant_id', $tenantId)
@@ -83,8 +90,14 @@ class CashClosingReconciliationService
             ->whereIn('status', ['open', 'partial'])
             ->sum('outstanding_amount');
 
+        $inventory = CashInventory::query()
+            ->where('tenant_id', $tenantId)
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->where('status', 'active')
+            ->get();
+
         return [
-            'opening_cash_amount' => round($opening, 2),
+            'opening_cash_amount' => round($openingCash, 2),
             'cash_in_amount' => round($cashIn, 2),
             'cash_out_amount' => round($cashOut, 2),
             'expected_cash_amount' => $expectedCash,
@@ -92,6 +105,7 @@ class CashClosingReconciliationService
             'bank_debit_amount' => round($bankDebit, 2),
             'bank_system_amount' => $bankNet,
             'hanging_amount' => round($hanging, 2),
+            'inventory' => $inventory,
             'period_start' => $start,
             'period_end' => $end,
             'previous_closing_id' => $previous?->id,
@@ -121,6 +135,26 @@ class CashClosingReconciliationService
             'bank_system_amount' => $result['bank_system_amount'],
             'bank_difference_amount' => 0,
         ]);
+
+        foreach ($closing->details()->get() as $detail) {
+            $inventory = $result['inventory']->first(function ($row) use ($detail) {
+                return (string) $row->currency_id === (string) $detail->currency_id
+                    && (string) ($row->currency_variant_id ?? 0) === (string) ($detail->currency_variant_id ?? 0)
+                    && (string) ($row->currency_denomination_id ?? 0) === (string) ($detail->currency_denomination_id ?? 0);
+            });
+
+            $systemQuantity = $inventory ? (float) $inventory->quantity : 0.0;
+            $systemAmount = $inventory ? (float) $inventory->total_amount : 0.0;
+            $physicalQuantity = (float) $detail->physical_quantity;
+            $physicalAmount = (float) $detail->physical_amount;
+
+            $detail->update([
+                'system_quantity' => $systemQuantity,
+                'difference_quantity' => round($physicalQuantity - $systemQuantity, 4),
+                'system_amount' => $systemAmount,
+                'difference_amount' => round($physicalAmount - $systemAmount, 2),
+            ]);
+        }
 
         return $closing->refresh();
     }
