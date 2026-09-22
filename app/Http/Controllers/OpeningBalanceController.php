@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
+use App\Models\CashInventory;
+use App\Models\CashInventoryMovement;
 use App\Models\Currency;
 use App\Models\CurrencyDenomination;
 use App\Models\OpeningBalance;
@@ -10,7 +12,9 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use RuntimeException;
 
 class OpeningBalanceController extends Controller
 {
@@ -68,8 +72,29 @@ class OpeningBalanceController extends Controller
             $timezone = config('app.timezone', 'Asia/Jakarta');
             $localDate = Carbon::parse($validated['balance_date'], $timezone);
             $date = $localDate->copy()->startOfDay();
-            $startOfDay = $date->copy()->utc();
+            $startOfDay = $date->copy()->startOfDay()->utc();
             $endOfDay = $date->copy()->endOfDay()->utc();
+
+            $existingForexDate = OpeningBalance::query()
+                ->where('tenant_id', $user->tenant_id)
+                ->where('branch_id', $user->branch_id)
+                ->where('balance_type', 'forex')
+                ->where('status', 'finalized')
+                ->whereBetween('balance_date', [$startOfDay, $endOfDay])
+                ->value('balance_date');
+
+            if ($existingForexDate) {
+                $hasPostedStock = CashInventoryMovement::query()
+                    ->where('tenant_id', $user->tenant_id)
+                    ->where('branch_id', $user->branch_id)
+                    ->where('movement_type', 'transaction')
+                    ->whereDate('created_at', '>=', $startOfDay)
+                    ->exists();
+
+                if ($hasPostedStock) {
+                    throw new RuntimeException('Saldo awal valas tidak boleh diubah setelah transaksi stok diposting. Gunakan adjustment/stock opname.');
+                }
+            }
 
             OpeningBalance::where('tenant_id', $user->tenant_id)
                 ->where('branch_id', $user->branch_id)
@@ -140,18 +165,69 @@ class OpeningBalanceController extends Controller
                     continue;
                 }
 
+                $currencyId = $denom->variant?->currency_id;
+                $variantId = $denom->currency_variant_id;
+                $amountRp = $qty * $rate;
+
                 OpeningBalance::create([
                     'tenant_id' => $user->tenant_id,
                     'branch_id' => $user->branch_id,
                     'balance_date' => $date,
                     'balance_type' => 'forex',
-                    'currency_id' => $denom->variant?->currency_id,
-                    'currency_variant_id' => $denom->currency_variant_id,
+                    'currency_id' => $currencyId,
+                    'currency_variant_id' => $variantId,
                     'currency_denomination_id' => $denom->id,
                     'quantity' => $qty,
                     'rate' => $rate,
-                    'amount_rp' => $qty * $rate,
+                    'amount_rp' => $amountRp,
                     'status' => 'finalized',
+                    'created_by' => $user->id,
+                ]);
+
+                $inventory = CashInventory::query()
+                    ->where('tenant_id', $user->tenant_id)
+                    ->where('branch_id', $user->branch_id)
+                    ->where('currency_id', $currencyId)
+                    ->where('currency_variant_id', $variantId)
+                    ->where('currency_denomination_id', $denom->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventory) {
+                    $inventory = CashInventory::query()->create([
+                        'id' => (string) Str::ulid(),
+                        'tenant_id' => $user->tenant_id,
+                        'branch_id' => $user->branch_id,
+                        'currency_id' => $currencyId,
+                        'currency_variant_id' => $variantId,
+                        'currency_denomination_id' => $denom->id,
+                        'quantity' => 0,
+                        'total_amount' => 0,
+                        'status' => 'active',
+                    ]);
+                }
+
+                $inventory->update([
+                    'quantity' => $qty,
+                    'total_amount' => $qty * (float) $denom->value,
+                    'status' => 'active',
+                ]);
+
+                CashInventoryMovement::query()->create([
+                    'id' => (string) Str::ulid(),
+                    'tenant_id' => $user->tenant_id,
+                    'branch_id' => $user->branch_id,
+                    'inventory_id' => $inventory->id,
+                    'transaction_id' => null,
+                    'cash_movement_id' => null,
+                    'direction' => 'in',
+                    'quantity' => $qty,
+                    'amount' => $qty * (float) $denom->value,
+                    'balance_quantity' => $qty,
+                    'balance_amount' => $qty * (float) $denom->value,
+                    'movement_type' => 'opening',
+                    'reference' => 'OPENING-' . $date->format('Ymd'),
+                    'notes' => 'Saldo awal stok valas per denominasi.',
                     'created_by' => $user->id,
                 ]);
             }
@@ -159,6 +235,6 @@ class OpeningBalanceController extends Controller
 
         return redirect()
             ->route('opening-balances.index', ['date' => $validated['balance_date']])
-            ->with('success', 'Saldo awal berhasil disimpan dan siap digunakan sebagai baseline operasional.');
+            ->with('success', 'Saldo awal berhasil disimpan dan stok valas siap digunakan sebagai baseline ERP.');
     }
 }
