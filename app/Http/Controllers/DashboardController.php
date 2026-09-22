@@ -164,13 +164,10 @@ class DashboardController extends Controller
             ->orderBy('account_number')
             ->get();
 
-        $bankCards = $accounts->map(function ($a) use ($tz, $today, $opening, $openingDate) {
-            $openingForAccount = (float) $opening
-                ->where('balance_type', 'bank')
-                ->where('bank_account_id', $a->id)
-                ->sum('amount_rp');
-
-            $balance = $openingDate ? $openingForAccount : (float) $a->opening_balance;
+        // Dashboard bank balance must use the same source of truth as Kas & Bank:
+        // BankAccount opening_balance + ALL bank mutations.
+        $bankCards = $accounts->map(function ($a) use ($tz, $today) {
+            $balance = (float) $a->opening_balance;
             $credit = 0.0;
             $debit = 0.0;
             $todayCredit = 0.0;
@@ -179,10 +176,9 @@ class DashboardController extends Controller
 
             foreach ($a->mutations as $m) {
                 $md = Carbon::parse($m->transaction_date, $tz);
-                if ($openingDate && $md->lt(Carbon::parse($openingDate, $tz)->startOfDay())) continue;
-
                 $c = (float) $m->credit;
                 $d = (float) $m->debit;
+
                 $balance += $c - $d;
                 $credit += $c;
                 $debit += $d;
@@ -201,7 +197,7 @@ class DashboardController extends Controller
                 'account_number' => $a->account_number,
                 'currency' => $a->currency?->code ?? 'IDR',
                 'currency_name' => $a->currency?->name ?? 'Rupiah',
-                'opening_balance' => $balance - $credit + $debit,
+                'opening_balance' => (float) $a->opening_balance,
                 'credit' => $credit,
                 'debit' => $debit,
                 'today_credit' => $todayCredit,
@@ -260,7 +256,7 @@ class DashboardController extends Controller
                 'expense_count' => $expenseCount,
                 'bank_credit' => $todayBankCredit,
                 'bank_debit' => $todayBankDebit,
-                'bank_net' => $todayBankCredit + $todayBankDebit,
+                'bank_net' => $todayBankCredit - $todayBankDebit,
                 'bank_net_change' => $todayBankCredit - $todayBankDebit,
                 'bank_mutation_count' => $todayBankMutationCount,
                 'cash_in' => $todayCashIn,
