@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankMutation;
 use App\Models\Currency;
 use App\Services\BankAccountService;
 use Illuminate\Http\RedirectResponse;
@@ -34,8 +35,20 @@ class BankAccountController extends Controller
                 ->orderByDesc('transaction_date'),
         ]);
 
+        // Satu riwayat terpusat untuk seluruh rekening bank pada tenant + branch aktif.
+        // Detail saldo tetap dihitung per rekening pada kartu di atas.
+        $mutations = BankMutation::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->where('branch_id', $user->branch_id)
+            ->with('bankAccount')
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('created_at')
+            ->paginate(50, ['*'], 'mutations_page')
+            ->withQueryString();
+
         return view('settings.bank-accounts.index', [
             'accounts' => $accounts,
+            'mutations' => $mutations,
         ]);
     }
 
